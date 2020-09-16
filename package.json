@@ -1,0 +1,19 @@
+{
+  "name": "dep-graph",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chokidar": "^3.4.2",
+    "hypobox": "^0.2.1",
+    "hyposcript": "^0.3.0",
+    "lodash": "^4.17.20",
+    "matched": "^5.0.0"
+  }
+}
