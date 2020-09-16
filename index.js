@@ -2,43 +2,42 @@ const path = require('path')
 const { EventEmitter } = require('events')
 const chokidar = require('chokidar')
 const matched = require('matched')
-const { uniq } = require('lodash')
+const uniq = require('@arr/unique')
 
-const cwd = process.cwd()
+function walk(children, parentIndex, parentChildren, ids, register) {
+  for (const { id, children: childs } of children) {
+    // push to all files
+    if (!ids.includes(id)) ids.push(id)
 
-module.exports = function graph(command, inputs) {
+    const index = ids.indexOf(id)
+
+    // push to previous parent's children
+    if (!parentChildren.includes(index)) parentChildren.push(index)
+
+    // set module values
+    if (!register[id]) register[id] = { roots: [], children: [] } // setup
+    if (!register[id].roots.includes(parentIndex)) register[id].roots.push(parentIndex) // set roots
+
+    // recurse
+    if (childs.length) walk(childs, parentIndex, register[id].children, ids, register)
+  }
+}
+
+module.exports = function graph(...inputs) {
   const events = new EventEmitter()
-
   const files = uniq(
-    inputs.map(matched.sync).flat(2).map(f => require.resolve(path.join(cwd, f)))
+    inputs.flat(2).map(matched.sync).flat(2).map(f => require.resolve(path.join(process.cwd(), f)))
   )
 
-  files.map(require) // required, load this module.children
+  // required, load this module.children
+  files.map(require)
 
   const ids = []
   const register = {}
-  const parents = module.children.filter(c => files.includes(c.id))
+  const entries = module.children.filter(c => files.includes(c.id))
 
-  function walk(children, parentIndex, parentChildren) {
-    for (const { id, children: childs } of children) {
-      // push to all files
-      if (!ids.includes(id)) ids.push(id)
-
-      const index = ids.indexOf(id)
-
-      // push to previous parent's children
-      if (!parentChildren.includes(index)) parentChildren.push(index)
-
-      // set module values
-      if (!register[id]) register[id] = { roots: [], children: [] } // setup
-      if (!register[id].roots.includes(parentIndex)) register[id].roots.push(parentIndex) // set roots
-
-      // recurse
-      if (childs.length) walk(childs, parentIndex, register[id].children)
-    }
-  }
-
-  for (const { id, children } of parents) {
+  // kick it off
+  for (const { id, children } of entries) {
     ids.push(id)
 
     const index = ids.indexOf(id)
@@ -48,61 +47,72 @@ module.exports = function graph(command, inputs) {
       children: [],
     }
 
-    if (children) walk(children, index, register[id].children)
+    if (children) walk(children, index, register[id].children, ids, register)
   }
 
   const watcher = chokidar.watch(ids, { ignoreInitial: true })
 
   watcher
     .on('all', (e, f) => {
-      const file = require.resolve(f)
-      const { roots: parentsToUpdate } = register[file]
+      const updatedFilepath = require.resolve(f)
+      const { roots: parentsToUpdate } = register[updatedFilepath]
 
-      const prev = require.cache[file]
-      delete require.cache[file]
-      require(file)
-      const next = require.cache[file]
+      const prev = require.cache[updatedFilepath]
+      delete require.cache[updatedFilepath]
+      require(updatedFilepath)
+      const next = require.cache[updatedFilepath]
+
+      // diff prev/next
       const removedModules = prev.children
         .filter(c => !next.children.find(_c => _c.id === c.id))
       const addedModules = next.children
         .filter(c => !prev.children.find(_c => _c.id === c.id))
 
-      // console.log('added', addedModules.map(r => r.id))
-      // console.log('removed', removedModules.map(r => r.id))
+      for (const removedModule of removedModules) {
+        let isModuleStillInUse = false
+        const removedModuleIndex = ids.indexOf(removedModule.id)
 
-      for (const removed of removedModules) {
-        let isInUse = false
-        const pointer = ids.indexOf(removed.id)
+        for (const filepath of Object.keys(register)) {
+          if (filepath === updatedFilepath) {
+            const localChildren = register[filepath].children
+            const localIndex = localChildren.indexOf(removedModuleIndex)
 
-        for (const key of Object.keys(register)) {
-          if (key === file) {
-            // the file that updated
-            register[key].children.splice(register[key].children.indexOf(pointer), 1)
+            /*
+             * for any roots of the file that changed, remove them from childen
+             * of this file
+             */
+            for (const rootIndex of register[filepath].roots) {
+              for (const localChildIndex of localChildren) {
+                const localChildFile = ids[localChildIndex]
+                const localChildFileRoots = register[localChildFile].roots
+                localChildFileRoots.splice(localChildFileRoots.indexOf(rootIndex), 1)
+              }
+            }
+
+            // clean up the children of this file last
+            register[filepath].children.splice(localIndex, 1)
           } else {
-            if (isInUse) continue; // don't accidentally reset back to false on another iteration
-            isInUse = register[key].children.includes(pointer)
+            // don't accidentally reset back to false on another iteration
+            if (isModuleStillInUse) continue
+
+            isModuleStillInUse = register[filepath].children.includes(removedModuleIndex)
           }
         }
 
-        if (!isInUse) {
-          ids.splice(pointer, 1)
-          delete register[removed.id]
-          watcher.unwatch(removed.id)
+        if (!isModuleStillInUse) {
+          ids.splice(removedModuleIndex, 1)
+          delete register[removedModule.id]
+          watcher.unwatch(removedModule.id)
         }
       }
 
-      for (const a of addedModules) {
-        watcher.add(a.id)
-      }
+      watcher.add(addedModules.map(a => a.id))
 
       for (const parentIndex of parentsToUpdate) {
         const parentFile = ids[parentIndex]
-        walk(next.children, parentIndex, register[parentFile].children)
+        walk(next.children, parentIndex, register[parentFile].children, ids, register)
         events.emit('update', require.cache[ids[parentIndex]])
       }
-
-      // console.log(ids)
-      // console.log(register)
     })
 
   return {
@@ -112,8 +122,8 @@ module.exports = function graph(command, inputs) {
       events.on(ev, fn)
       return () => events.removeListener(ev, fn)
     },
-    close() {
-      watcher.close()
+    async close() {
+      return watcher.close()
     }
   }
 }

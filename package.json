@@ -4,20 +4,20 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node -r esm test",
+    "test:watch": "nodemon -r esm test -i ./fixtures"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@arr/unique": "^1.0.1",
     "chokidar": "^3.4.2",
-    "hypobox": "^0.2.1",
-    "hyposcript": "^0.3.0",
-    "lodash": "^4.17.20",
     "matched": "^5.0.0"
   },
   "devDependencies": {
     "baretest": "^2.0.0",
+    "esm": "^3.2.25",
     "fs-extra": "^9.0.1",
     "nodemon": "^2.0.4"
   }
