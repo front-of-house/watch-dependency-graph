@@ -4,7 +4,7 @@ const chokidar = require('chokidar')
 const matched = require('matched')
 const uniq = require('@arr/unique')
 
-function walk(children, parentIndex, parentChildren, ids, register) {
+function walk(children, parentIndex, parentChildren, ids, register, visited = []) {
   for (const { id, children: childs } of children) {
     // push to all files
     if (!ids.includes(id)) ids.push(id)
@@ -18,15 +18,18 @@ function walk(children, parentIndex, parentChildren, ids, register) {
     if (!register[id]) register[id] = { roots: [], children: [] } // setup
     if (!register[id].roots.includes(parentIndex)) register[id].roots.push(parentIndex) // set roots
 
-    // recurse
-    if (childs.length) walk(childs, parentIndex, register[id].children, ids, register)
+    // recurse, but only if we haven't walked these children yet
+    if (Boolean(childs.length && !visited.includes(id))) {
+      visited.push(id)
+      walk(childs, parentIndex, register[id].children, ids, register, visited)
+    }
   }
 }
 
 module.exports = function graph(...inputs) {
   const events = new EventEmitter()
   const files = uniq(
-    inputs.flat(2).map(matched.sync).flat(2).map(f => require.resolve(path.join(process.cwd(), f)))
+    inputs.flat(2).map(matched.sync).flat(2).map(f => require.resolve(path.resolve(process.cwd(), f)))
   )
 
   // required, load this module.children
@@ -111,7 +114,7 @@ module.exports = function graph(...inputs) {
       for (const parentIndex of parentsToUpdate) {
         const parentFile = ids[parentIndex]
         walk(next.children, parentIndex, register[parentFile].children, ids, register)
-        events.emit('update', require.cache[ids[parentIndex]])
+        events.emit('update', ids[parentIndex])
       }
     })
 
