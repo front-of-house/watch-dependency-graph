@@ -13,7 +13,7 @@ const fixtures = {
   childOfA: path.join(fixturesRoot, 'childOfA.js'),
   childOfB: path.join(fixturesRoot, 'childOfB.js'),
   A: path.join(fixturesRoot, 'A.js'),
-  B: path.join(fixturesRoot, 'B.js'),
+  B: path.join(fixturesRoot, 'B.js')
 }
 
 test.before(() => {
@@ -22,8 +22,14 @@ test.before(() => {
   fs.outputFileSync(fixtures.commonDep, `module.exports = {}`)
   fs.outputFileSync(fixtures.childOfA, `require('${fixtures.childOfChildren}')`)
   fs.outputFileSync(fixtures.childOfB, `require('${fixtures.childOfChildren}')`)
-  fs.outputFileSync(fixtures.A, `import * as A from '${fixtures.childOfA}';import * as commonDep from '${fixtures.commonDep}'`) // works with imports
-  fs.outputFileSync(fixtures.B, `require('${fixtures.childOfB}');require('${fixtures.commonDep}')`)
+  fs.outputFileSync(
+    fixtures.A,
+    `import * as A from '${fixtures.childOfA}';import * as commonDep from '${fixtures.commonDep}'`
+  ) // works with imports
+  fs.outputFileSync(
+    fixtures.B,
+    `require('${fixtures.childOfB}');require('${fixtures.commonDep}')`
+  )
 })
 
 test.after(async () => {
@@ -69,7 +75,10 @@ test('update common nested child', async () => {
   const instance = require('./')(['./fixtures/A.js', './fixtures/B.js'])
   const close = instance.on('update', mod => updated.push(mod))
 
-  fs.outputFileSync(fixtures.childOfChildren, fs.readFileSync(fixtures.childOfChildren))
+  fs.outputFileSync(
+    fixtures.childOfChildren,
+    fs.readFileSync(fixtures.childOfChildren)
+  )
 
   await wait(DELAY)
 
@@ -94,7 +103,10 @@ test('update common nested child after ancestor removal', async () => {
 
   await wait(DELAY)
 
-  fs.outputFileSync(fixtures.childOfChildren, fs.readFileSync(fixtures.childOfChildren))
+  fs.outputFileSync(
+    fixtures.childOfChildren,
+    fs.readFileSync(fixtures.childOfChildren)
+  )
 
   await wait(DELAY)
 
@@ -105,21 +117,30 @@ test('update common nested child after ancestor removal', async () => {
 })
 
 test('ensure shared deps are both mapped to entries', async () => {
-  const { register, close } = require('./')(['./fixtures/A.js', './fixtures/B.js'])
+  const { register, close } = require('./')([
+    './fixtures/A.js',
+    './fixtures/B.js'
+  ])
 
-  assert(register[fixtures.commonDep].roots.length === 2)
+  assert(register[fixtures.commonDep].entries.length === 2)
 
   await close()
 })
 
 test('handles circular deps', async () => {
-  fs.outputFileSync(fixtures.childOfA, `require('${fixtures.childOfChildren}');require('${fixtures.commonDep}')`)
+  fs.outputFileSync(
+    fixtures.childOfA,
+    `require('${fixtures.childOfChildren}');require('${fixtures.commonDep}')`
+  )
 
   await wait(DELAY)
 
-  const { register, close } = require('./')(['./fixtures/A.js', './fixtures/B.js'])
+  const { register, close } = require('./')([
+    './fixtures/A.js',
+    './fixtures/B.js'
+  ])
 
-  assert(register[fixtures.commonDep].roots.length === 2)
+  assert(register[fixtures.commonDep].entries.length === 2)
 
   await close()
 })
