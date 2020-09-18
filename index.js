@@ -34,23 +34,25 @@ function walk (
   }
 }
 
-module.exports = function graph (...inputs) {
-  const events = new EventEmitter()
-  const ids = []
-  const register = {}
+function getEntries (globs) {
   const files = uniq(
-    inputs
+    globs
       .flat(2)
       .map(matched.sync)
       .flat(2)
       .map(f => require.resolve(path.resolve(process.cwd(), f)))
   )
 
-  // required, load this module.children
-  files.map(require)
+  files.map(require) // load modules
 
-  // get module references for the inputs files
-  const entries = module.children.filter(c => files.includes(c.id))
+  return module.children.filter(({ id }) => files.includes(id))
+}
+
+module.exports = function graph (...globs) {
+  const events = new EventEmitter()
+  let ids = []
+  let register = {}
+  let entries = getEntries(globs)
 
   // kick it off
   for (const { id, children } of entries) {
