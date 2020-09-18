@@ -35,9 +35,9 @@ function walk (
 }
 
 module.exports = function graph (...inputs) {
+  const events = new EventEmitter()
   const ids = []
   const register = {}
-  const events = new EventEmitter()
   const files = uniq(
     inputs
       .flat(2)
@@ -140,8 +140,12 @@ module.exports = function graph (...inputs) {
         ids,
         register
       )
-      events.emit('update', ids[entryPointer])
     }
+
+    events.emit(
+      'update',
+      entries.map(p => ids[p])
+    )
   })
 
   return {
