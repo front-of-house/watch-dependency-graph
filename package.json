@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node fixtures && node -r esm test",
-    "test:watch": "node fixtures && nodemon -r esm test -i ./fixtures",
+    "fixtures": "node fixtures",
+    "test": "npm run fixtures && node -r esm test",
+    "test:watch": "npm run fixtures && nodemon -r esm test -i ./fixtures",
     "format": "prettier-standard --format"
   },
   "husky": {

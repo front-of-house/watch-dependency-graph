@@ -2,7 +2,9 @@ const fs = require('fs-extra')
 const test = require('baretest')('presta')
 const assert = require('assert')
 
-const { fixtures } = require('./fixtures.js')
+const { fixtures, fixturesRoot } = require('./fixtures.js')
+
+const wait = t => new Promise(r => setTimeout(r, t))
 
 function subscribe (instance) {
   return new Promise(r => {
@@ -14,7 +16,7 @@ function subscribe (instance) {
 }
 
 test('update main entries', async () => {
-  const instance = require('./')(['./fixtures/A.js', './fixtures/B.js'])
+  const instance = require('./')(fixtures.A, fixtures.B)
 
   const A = subscribe(instance)
 
@@ -32,7 +34,7 @@ test('update main entries', async () => {
 })
 
 test('update single child', async () => {
-  const instance = require('./')(['./fixtures/A.js', './fixtures/B.js'])
+  const instance = require('./')(fixtures.A, fixtures.B)
 
   const subscriber = subscribe(instance)
 
@@ -47,7 +49,7 @@ test('update single child', async () => {
 })
 
 test('update common nested child', async () => {
-  const instance = require('./')(['./fixtures/A.js', './fixtures/B.js'])
+  const instance = require('./')(fixtures.A, fixtures.B)
 
   const subscriber = subscribe(instance)
 
@@ -66,7 +68,7 @@ test('update common nested child', async () => {
 })
 
 test('update common nested child after ancestor removal', async () => {
-  const instance = require('./')(['./fixtures/A.js', './fixtures/B.js'])
+  const instance = require('./')(fixtures.A, fixtures.B)
 
   const A = subscribe(instance)
 
@@ -90,10 +92,7 @@ test('update common nested child after ancestor removal', async () => {
 })
 
 test('ensure shared deps are both mapped to entries', async () => {
-  const { register, close } = require('./')([
-    './fixtures/A.js',
-    './fixtures/B.js'
-  ])
+  const { register, close } = require('./')(fixtures.A, fixtures.B)
 
   assert(register[fixtures.commonDep].entries.length === 2)
 
@@ -106,18 +105,80 @@ test('handles circular deps', async () => {
     `require('${fixtures.childOfChildren}');require('${fixtures.commonDep}')`
   )
 
-  const { register, close } = require('./')([
-    './fixtures/A.js',
-    './fixtures/B.js'
-  ])
+  await wait(500)
+
+  const { register, close } = require('./')(fixtures.A, fixtures.B)
 
   assert(register[fixtures.commonDep].entries.length === 2)
 
   await close()
 })
 
+test('handles case rename as change', async () => {
+  const instance = require('./')(fixtures.renameableEntry)
+
+  const subscriber = subscribe(instance)
+
+  fs.renameSync(
+    fixtures.renameable,
+    fixtures.renameable.replace('renameable', 'Renameable')
+  )
+
+  const ids = await subscriber
+
+  assert(ids.includes(fixtures.renameableEntry))
+
+  await instance.close()
+})
+
+test('handles file rename by unwatching', async () => {
+  const instance = require('./')(fixtures.renameableEntry)
+
+  const subscriber = subscribe(instance)
+
+  const newFile = fixtures.renameable.replace('renameable', 'renameabl')
+  fs.renameSync(fixtures.renameable, newFile)
+  fs.outputFileSync(newFile, fs.readFileSync(newFile))
+
+  // bump, otherwise ^ those won't fire
+  fs.outputFileSync(
+    fixtures.renameableEntry,
+    fs.readFileSync(fixtures.renameableEntry)
+  )
+
+  const ids = await subscriber
+
+  assert(ids.length === 1)
+  assert(ids.includes(fixtures.renameableEntry))
+
+  await instance.close()
+})
+
+test.skip('handles entry rename by restarting', async () => {
+  const instance = require('./')('./fixtures/*.entry.js')
+
+  const subscriber = subscribe(instance)
+
+  const newFile = fixtures.renameableEntry.replace(
+    'renameableEntry',
+    'renameableEntr'
+  )
+  fs.renameSync(fixtures.renameableEntry, newFile)
+
+  // bump a watched file, otherwise ^ those won't fire
+  fs.outputFileSync(fixtures.A, fs.readFileSync(fixtures.A))
+
+  await subscriber
+
+  console.log(instance.ids)
+  assert(instance.ids.includes(newFile))
+
+  await instance.close()
+})
+
 !(async function () {
   console.time('test')
   await test.run()
+  fs.removeSync(fixturesRoot)
   console.timeEnd('test')
 })()
