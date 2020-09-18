@@ -6,9 +6,9 @@ const { fixtures, fixturesRoot } = require('./fixtures.js')
 
 const wait = t => new Promise(r => setTimeout(r, t))
 
-function subscribe (instance) {
+function subscribe (event, instance) {
   return new Promise(r => {
-    const close = instance.on('update', ids => {
+    const close = instance.on(event, ids => {
       close()
       r(ids)
     })
@@ -18,13 +18,13 @@ function subscribe (instance) {
 test('update main entries', async () => {
   const instance = require('./')(fixtures.A, fixtures.B)
 
-  const A = subscribe(instance)
+  const A = subscribe('update', instance)
 
   fs.outputFileSync(fixtures.A, fs.readFileSync(fixtures.A))
 
   assert((await A).includes(fixtures.A))
 
-  const B = subscribe(instance)
+  const B = subscribe('update', instance)
 
   fs.outputFileSync(fixtures.B, fs.readFileSync(fixtures.B))
 
@@ -36,7 +36,7 @@ test('update main entries', async () => {
 test('update single child', async () => {
   const instance = require('./')(fixtures.A, fixtures.B)
 
-  const subscriber = subscribe(instance)
+  const subscriber = subscribe('update', instance)
 
   fs.outputFileSync(fixtures.childOfA, fs.readFileSync(fixtures.childOfA))
 
@@ -51,7 +51,7 @@ test('update single child', async () => {
 test('update common nested child', async () => {
   const instance = require('./')(fixtures.A, fixtures.B)
 
-  const subscriber = subscribe(instance)
+  const subscriber = subscribe('update', instance)
 
   fs.outputFileSync(
     fixtures.childOfChildren,
@@ -70,7 +70,7 @@ test('update common nested child', async () => {
 test('update common nested child after ancestor removal', async () => {
   const instance = require('./')(fixtures.A, fixtures.B)
 
-  const A = subscribe(instance)
+  const A = subscribe('update', instance)
 
   fs.outputFileSync(fixtures.childOfA, '') // remove child
 
@@ -79,7 +79,7 @@ test('update common nested child after ancestor removal', async () => {
   assert(updatedA.length === 1)
   assert(updatedA[0] === fixtures.A)
 
-  const child = subscribe(instance)
+  const child = subscribe('update', instance)
 
   fs.outputFileSync(
     fixtures.childOfChildren,
@@ -117,7 +117,7 @@ test('handles circular deps', async () => {
 test('handles case rename as change', async () => {
   const instance = require('./')(fixtures.renameableEntry)
 
-  const subscriber = subscribe(instance)
+  const subscriber = subscribe('update', instance)
 
   fs.renameSync(
     fixtures.renameable,
@@ -134,7 +134,7 @@ test('handles case rename as change', async () => {
 test('handles file rename by unwatching', async () => {
   const instance = require('./')(fixtures.renameableEntry)
 
-  const subscriber = subscribe(instance)
+  const subscriber = subscribe('update', instance)
 
   const newFile = fixtures.renameable.replace('renameable', 'renameabl')
   fs.renameSync(fixtures.renameable, newFile)
@@ -154,10 +154,10 @@ test('handles file rename by unwatching', async () => {
   await instance.close()
 })
 
-test.skip('handles entry rename by restarting', async () => {
+test('handles entry rename by restarting', async () => {
   const instance = require('./')('./fixtures/*.entry.js')
 
-  const subscriber = subscribe(instance)
+  const removed = subscribe('remove', instance)
 
   const newFile = fixtures.renameableEntry.replace(
     'renameableEntry',
@@ -165,12 +165,9 @@ test.skip('handles entry rename by restarting', async () => {
   )
   fs.renameSync(fixtures.renameableEntry, newFile)
 
-  // bump a watched file, otherwise ^ those won't fire
-  fs.outputFileSync(fixtures.A, fs.readFileSync(fixtures.A))
+  const removedIds = await removed
 
-  await subscriber
-
-  console.log(instance.ids)
+  assert(removedIds.includes(fixtures.renameableEntry))
   assert(instance.ids.includes(newFile))
 
   await instance.close()

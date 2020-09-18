@@ -59,7 +59,7 @@ module.exports = function graph (...globs) {
   let entries = []
   let watcher
 
-  // kick it off
+    // kick it off
   ;(function init () {
     ids = []
     register = {}
@@ -83,13 +83,15 @@ module.exports = function graph (...globs) {
 
     watcher = chokidar.watch(ids, { ignoreInitial: true })
 
-    watcher.on('all', async (e, f) => {
+    watcher.on('all', (e, f) => {
       if (e === 'add') {
         // shouldn't ever happen
       } else if (e === 'unlink') {
+        const removedModule = entries.find(e => e.id === f)
         // an *entry* was renamed or removed
-        if (entries.find(e => e.id === f)) {
-          await watcher.close()
+        if (removedModule) {
+          watcher.close()
+          events.emit('remove', [removedModule.id])
           init()
           // const pointer = ids.indexOf(f)
 
@@ -188,8 +190,12 @@ module.exports = function graph (...globs) {
   })()
 
   return {
-    ids,
-    register,
+    get ids () {
+      return ids
+    },
+    get register () {
+      return register
+    },
     on (ev, fn) {
       events.on(ev, fn)
       return () => events.removeListener(ev, fn)
