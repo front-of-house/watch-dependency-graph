@@ -14,6 +14,13 @@
       "pre-commit": "prettier-standard --format --staged && npm run test"
     }
   },
+  "keywords": [
+    "dependency tree",
+    "module",
+    "graph",
+    "tree",
+    "node"
+  ],
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/sure-thing/watch-dependency-graph.git"
