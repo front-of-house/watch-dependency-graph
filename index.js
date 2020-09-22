@@ -93,38 +93,26 @@ module.exports = function graph (...globs) {
           watcher.close()
           events.emit('remove', [removedModule.id])
           init()
-          // const pointer = ids.indexOf(f)
-
-          // // delete from ids and register
-          // ids.splice(pointer, 1)
-          // delete register[f]
-
-          // // remove any references
-          // for (const filepath of Object.keys(register)) {
-          //   const { entries, children } = register[filepath]
-          //   entries.splice(entries.indexOf(pointer), 1)
-          //   children.splice(children.indexOf(pointer), 1)
-          // }
         } else {
           watcher.unwatch(f)
         }
       } else if (e === 'change') {
         const updatedFilepath = require.resolve(f)
-        const { entries } = register[updatedFilepath]
+        const { entries, children } = register[updatedFilepath]
 
-        const prev = require.cache[updatedFilepath]
+        const prev = require.cache[updatedFilepath] || require(updatedFilepath)
         delete require.cache[updatedFilepath]
         require(updatedFilepath)
         const next = require.cache[updatedFilepath]
 
         // diff prev/next
-        const removedModuleIds = prev.children
-          .filter(c => !next.children.find(_c => _c.id === c.id))
+        const removedModuleIds = (prev.children || [])
+          .filter(c => !(next.children || []).find(_c => _c.id === c.id))
           .map(c => c.id)
 
         // add to watch instance
         next.children
-          .filter(c => !prev.children.find(_c => _c.id === c.id))
+          .filter(c => !(prev.children || []).find(_c => _c.id === c.id))
           .forEach(c => watcher.add(c.id))
 
         for (const removedModuleId of removedModuleIds) {
@@ -172,6 +160,10 @@ module.exports = function graph (...globs) {
 
         for (const entryPointer of entries) {
           const parentFile = ids[entryPointer]
+
+          // clear entries so users can re-require
+          delete require.cache[parentFile]
+
           walk(
             next.children,
             entryPointer,
