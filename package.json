@@ -14,9 +14,16 @@
       "pre-commit": "prettier-standard --format --staged && npm run test"
     }
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/sure-thing/watch-dependency-graph.git"
+  },
+  "author": "estrattonbailey",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/sure-thing/watch-dependency-graph/issues"
+  },
+  "homepage": "https://github.com/sure-thing/watch-dependency-graph#readme",
   "dependencies": {
     "@arr/unique": "^1.0.1",
     "chokidar": "^3.4.2",
