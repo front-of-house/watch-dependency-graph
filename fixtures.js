@@ -10,7 +10,8 @@ const fixtures = {
   childOfB: path.join(fixturesRoot, 'childOfB.js'),
   A: path.join(fixturesRoot, 'A.entry.js'),
   B: path.join(fixturesRoot, 'B.entry.js'),
-  renameableEntry: path.join(fixturesRoot, 'renameableEntry.entry.js')
+  renameableEntry: path.join(fixturesRoot, 'renameableEntry.entry.js'),
+  addedEntry: path.join(fixturesRoot, 'addedEntry.entry.js')
 }
 
 fs.ensureDirSync(fixturesRoot)

@@ -4,6 +4,7 @@ const assert = require('assert')
 const chokidar = require('chokidar')
 const matched = require('matched')
 const uniq = require('@arr/unique')
+const debug = require('debug')('wdg')
 
 function walk (
   children,
@@ -49,7 +50,9 @@ function getEntries (globs) {
   return module.children.filter(({ id }) => files.includes(id))
 }
 
-module.exports = function graph (...globs) {
+module.exports = function graph (...globbies) {
+  const globs = globbies.flat(2).map(g => path.resolve(process.cwd(), g))
+
   // once instance
   const events = new EventEmitter()
 
@@ -81,29 +84,38 @@ module.exports = function graph (...globs) {
         walk(children, entryPointer, register[id].children, ids, register)
     }
 
-    watcher = chokidar.watch(ids, { ignoreInitial: true })
+    watcher = chokidar.watch(globs.concat(ids), { ignoreInitial: true })
 
-    watcher.on('all', (e, f) => {
+    watcher.on('all', async (e, f) => {
+      debug('chokidar', e, f)
+
+      const fullEmittedFilepath = require.resolve(f)
+
+      debug('fullEmittedFilepath', fullEmittedFilepath)
+
       if (e === 'add') {
+        await watcher.close()
+        events.emit('add', [fullEmittedFilepath])
+        init()
         // shouldn't ever happen
       } else if (e === 'unlink') {
         const removedModule = entries.find(e => e.id === f)
         // an *entry* was renamed or removed
         if (removedModule) {
-          watcher.close()
+          await watcher.close()
           events.emit('remove', [removedModule.id])
           init()
         } else {
           watcher.unwatch(f)
         }
       } else if (e === 'change') {
-        const updatedFilepath = require.resolve(f)
-        const { entries, children } = register[updatedFilepath]
+        const { entries, children } = register[fullEmittedFilepath]
 
-        const prev = require.cache[updatedFilepath] || require(updatedFilepath)
-        delete require.cache[updatedFilepath]
-        require(updatedFilepath)
-        const next = require.cache[updatedFilepath]
+        const prev =
+          require.cache[fullEmittedFilepath] || require(fullEmittedFilepath)
+        delete require.cache[fullEmittedFilepath]
+        require(fullEmittedFilepath)
+        const next = require.cache[fullEmittedFilepath]
 
         // diff prev/next
         const removedModuleIds = (prev.children || [])
@@ -120,7 +132,7 @@ module.exports = function graph (...globs) {
           const removedModulePointer = ids.indexOf(removedModuleId)
 
           for (const filepath of Object.keys(register)) {
-            if (filepath === updatedFilepath) {
+            if (filepath === fullEmittedFilepath) {
               const localChildren = register[filepath].children
               const localPointer = localChildren.indexOf(removedModulePointer)
 
@@ -193,6 +205,9 @@ module.exports = function graph (...globs) {
       return () => events.removeListener(ev, fn)
     },
     async close () {
+      events.removeAllListeners('update')
+      events.removeAllListeners('add')
+      events.removeAllListeners('remove')
       return watcher.close()
     }
   }

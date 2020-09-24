@@ -173,6 +173,65 @@ test('handles entry rename by restarting', async () => {
   await instance.close()
 })
 
+test('handles adding new entry file', async () => {
+  const instance = require('./')('./fixtures/*.entry.js')
+
+  const added = subscribe('add', instance)
+
+  await wait(500)
+
+  fs.outputFileSync(fixtures.addedEntry, 'module.exports = {}')
+
+  const ids = await added
+
+  assert(ids.includes(fixtures.addedEntry))
+  assert(instance.ids.includes(fixtures.addedEntry))
+
+  await instance.close()
+})
+
+test('can remove listeners', async () => {
+  const instance = require('./')(fixtures.A)
+
+  let calls = 0
+
+  // should not fire
+  instance.on('update', () => {
+    calls += 1
+  })()
+
+  const close = instance.on('update', () => {
+    calls += 1
+  })
+
+  fs.outputFileSync(fixtures.childOfA, fs.readFileSync(fixtures.childOfA))
+
+  await wait(500)
+
+  assert(calls === 1)
+
+  close()
+  await instance.close()
+})
+
+test('resets listeners after close', async () => {
+  const instance = require('./')(fixtures.A)
+
+  let calls = 0
+
+  instance.on('update', () => {
+    calls += 1
+  })
+
+  await instance.close()
+
+  fs.outputFileSync(fixtures.childOfA, fs.readFileSync(fixtures.childOfA))
+
+  await wait(500)
+
+  assert(calls === 0)
+})
+
 !(async function () {
   console.time('test')
   await test.run()

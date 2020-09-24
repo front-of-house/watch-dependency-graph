@@ -34,6 +34,7 @@
   "dependencies": {
     "@arr/unique": "^1.0.1",
     "chokidar": "^3.4.2",
+    "debug": "^4.2.0",
     "matched": "^5.0.0"
   },
   "devDependencies": {
