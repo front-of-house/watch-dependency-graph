@@ -6,32 +6,45 @@ const matched = require('matched')
 const uniq = require('@arr/unique')
 const debug = require('debug')('wdg')
 
-function walk (
-  children,
-  entryPointer,
-  parentChildren,
+function walk ({
   ids,
   register,
+  entryPointer,
+  currentPointer,
+  childrenOfCurrent,
+  nextChildren,
   visited = []
-) {
-  for (const { id, children: childs } of children) {
+}) {
+  for (const { id, children: childs } of nextChildren) {
     // push to all files
     if (!ids.includes(id)) ids.push(id)
 
     const pointer = ids.indexOf(id)
 
     // push to previous parent's children
-    if (!parentChildren.includes(pointer)) parentChildren.push(pointer)
+    if (!childrenOfCurrent.includes(pointer)) childrenOfCurrent.push(pointer)
 
     // set module values
-    if (!register[id]) register[id] = { entries: [], children: [] } // setup
+    if (!register[id])
+      register[id] = { pointer, entries: [], children: [], parents: [] } // setup
     if (!register[id].entries.includes(entryPointer))
       register[id].entries.push(entryPointer) // set entries
+    if (!register[id].parents.includes(currentPointer))
+      register[id].parents.push(currentPointer) // set entries
 
     // recurse, but only if we haven't walked these children yet
     if (Boolean(childs.length && !visited.includes(id))) {
       visited.push(id)
-      walk(childs, entryPointer, register[id].children, ids, register, visited)
+
+      walk({
+        ids,
+        register,
+        entryPointer,
+        currentPointer: pointer,
+        childrenOfCurrent: register[id].children,
+        nextChildren: childs,
+        visited
+      })
     }
   }
 }
@@ -76,12 +89,22 @@ module.exports = function graph (...globbies) {
       const entryPointer = ids.indexOf(id) // get pointer
 
       register[id] = {
+        pointer: entryPointer,
         entries: [entryPointer], // self-referential
+        parents: [],
         children: []
       }
 
-      if (children)
-        walk(children, entryPointer, register[id].children, ids, register)
+      if (children) {
+        walk({
+          ids,
+          register,
+          entryPointer,
+          currentPointer: entryPointer,
+          childrenOfCurrent: register[id].children,
+          nextChildren: children
+        })
+      }
     }
 
     watcher = chokidar.watch(globs.concat(ids), { ignoreInitial: true })
@@ -109,7 +132,7 @@ module.exports = function graph (...globbies) {
           watcher.unwatch(f)
         }
       } else if (e === 'change') {
-        const { entries, children } = register[fullEmittedFilepath]
+        const { entries, children, parents } = register[fullEmittedFilepath]
 
         const prev =
           require.cache[fullEmittedFilepath] || require(fullEmittedFilepath)
@@ -170,19 +193,25 @@ module.exports = function graph (...globbies) {
           }
         }
 
+        // clear modules that require this module
+        for (const parentPointer of parents) {
+          delete require.cache[ids[parentPointer]]
+        }
+
         for (const entryPointer of entries) {
-          const parentFile = ids[entryPointer]
+          const fileId = ids[entryPointer]
 
           // clear entries so users can re-require
-          delete require.cache[parentFile]
+          delete require.cache[fileId]
 
-          walk(
-            next.children,
-            entryPointer,
-            register[parentFile].children,
+          walk({
             ids,
-            register
-          )
+            register,
+            entryPointer,
+            currentPointer: entryPointer,
+            childrenOfCurrent: register[fileId].children,
+            nextChildren: next.children
+          })
         }
 
         events.emit(

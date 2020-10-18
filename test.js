@@ -53,16 +53,19 @@ test('update common nested child', async () => {
 
   const subscriber = subscribe('update', instance)
 
-  fs.outputFileSync(
-    fixtures.childOfChildren,
-    fs.readFileSync(fixtures.childOfChildren)
-  )
+  const before = require(fixtures.childOfChildren)
+  assert(before.foo === undefined)
+
+  fs.outputFileSync(fixtures.childOfChildren, `module.exports = { foo: true }`)
 
   const updated = await subscriber
 
   assert(updated.length >= 2)
   assert(updated.includes(fixtures.A))
   assert(updated.includes(fixtures.B))
+
+  const after = require(fixtures.childOfChildren)
+  assert(after.foo === true)
 
   await instance.close()
 })
