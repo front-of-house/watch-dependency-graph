@@ -1,4 +1,4 @@
-const fs = require('fs-extra')
+const fs = require('fs')
 const path = require('path')
 
 const fixturesRoot = path.join(__dirname, 'fixtures')
@@ -19,31 +19,57 @@ const fixtures = {
   cachedEntry: path.join(fixturesRoot, 'cachedEntry.js')
 }
 
-fs.ensureDirSync(fixturesRoot)
-fs.ensureDirSync(fixturesRoot)
-fs.outputFileSync(fixtures.childOfChildren, `module.exports = {}`)
-fs.outputFileSync(fixtures.renameable, `module.exports = {}`)
-fs.outputFileSync(fixtures.commonDep, `module.exports = {}`)
-fs.outputFileSync(fixtures.childOfA, `require('${fixtures.childOfChildren}')`)
-fs.outputFileSync(fixtures.childOfB, `require('${fixtures.childOfChildren}')`)
-fs.outputFileSync(
-  fixtures.A,
-  `import * as A from '${fixtures.childOfA}';import * as commonDep from '${fixtures.commonDep}'`
-) // works with imports
-fs.outputFileSync(
-  fixtures.B,
-  `require('${fixtures.childOfB}'); require('${fixtures.commonDep}')`
-)
-fs.outputFileSync(fixtures.renameableEntry, `require('${fixtures.renameable}')`)
+try {
+  fs.mkdirSync(fixturesRoot)
+} catch (e) {
+  if (e.code !== 'EEXIST') {
+    throw e
+  }
+}
 
-fs.outputFileSync(fixtures.cachedDeepChild, `module.exports = { value: 0 }`)
-fs.outputFileSync(
-  fixtures.cachedChild,
-  `module.exports = require('./cachedDeepChild')`
+fs.writeFileSync(fixtures.childOfChildren, `module.exports = {}`, 'utf-8')
+fs.writeFileSync(fixtures.renameable, `module.exports = {}`, 'utf-8')
+fs.writeFileSync(fixtures.commonDep, `module.exports = {}`, 'utf-8')
+fs.writeFileSync(
+  fixtures.childOfA,
+  `require('${fixtures.childOfChildren}')`,
+  'utf-8'
 )
-fs.outputFileSync(
+fs.writeFileSync(
+  fixtures.childOfB,
+  `require('${fixtures.childOfChildren}')`,
+  'utf-8'
+)
+fs.writeFileSync(
+  fixtures.A,
+  `import * as A from '${fixtures.childOfA}';import * as commonDep from '${fixtures.commonDep}'`,
+  'utf-8'
+) // works with imports
+fs.writeFileSync(
+  fixtures.B,
+  `require('${fixtures.childOfB}'); require('${fixtures.commonDep}')`,
+  'utf-8'
+)
+fs.writeFileSync(
+  fixtures.renameableEntry,
+  `require('${fixtures.renameable}')`,
+  'utf-8'
+)
+
+fs.writeFileSync(
+  fixtures.cachedDeepChild,
+  `module.exports = { value: 0 }`,
+  'utf-8'
+)
+fs.writeFileSync(
+  fixtures.cachedChild,
+  `module.exports = require('./cachedDeepChild')`,
+  'utf-8'
+)
+fs.writeFileSync(
   fixtures.cachedEntry,
-  `module.exports = require('./cachedChild')`
+  `module.exports = require('./cachedChild')`,
+  'utf-8'
 )
 
 module.exports = {

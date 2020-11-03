@@ -1,4 +1,3 @@
-const path = require('path')
 const { EventEmitter } = require('events')
 const assert = require('assert')
 const chokidar = require('chokidar')
@@ -64,13 +63,7 @@ function clearParentTree ({ parentPointers, ids, register }) {
 }
 
 function getEntries (globs) {
-  const files = uniq(
-    globs
-      .flat(2)
-      .map(matched.sync)
-      .flat(2)
-      .map(f => require.resolve(path.resolve(process.cwd(), f)))
-  )
+  const files = uniq(globs.map(matched.sync).flat(2))
 
   files.map(require) // load modules
 
@@ -78,7 +71,7 @@ function getEntries (globs) {
 }
 
 module.exports = function graph (...globbies) {
-  const globs = globbies.flat(2).map(g => path.resolve(process.cwd(), g))
+  const globs = globbies.flat(2)
 
   // once instance
   const events = new EventEmitter()
