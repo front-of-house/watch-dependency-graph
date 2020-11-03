@@ -4,14 +4,15 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "fixtures": "node fixtures",
-    "test": "npm run fixtures && node -r esm test",
+    "test": "DEBUG=wdg node -r esm test",
     "test:watch": "npm run fixtures && nodemon -r esm test -i ./fixtures",
-    "format": "prettier-standard --format"
+    "format": "prettier-standard --format",
+    "lint": "prettier-standard --lint"
   },
   "husky": {
     "hooks": {
-      "pre-commit": "prettier-standard --format --staged && npm run test"
+      "pre-commit": "prettier-standard --format --staged && npm run test",
+      "prepare-commit-msg": "exec < /dev/tty && git cz --hook || true"
     }
   },
   "keywords": [
@@ -39,10 +40,13 @@
   },
   "devDependencies": {
     "baretest": "^2.0.0",
+    "commitizen": "^4.2.2",
+    "cz-conventional-changelog": "^3.3.0",
     "esm": "^3.2.25",
     "fs-extra": "^9.0.1",
     "husky": "^4.3.0",
     "nodemon": "^2.0.4",
-    "prettier-standard": "^16.4.1"
+    "prettier-standard": "^16.4.1",
+    "semantic-release": "^17.2.2"
   }
 }

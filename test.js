@@ -1,16 +1,22 @@
+process.chdir(__dirname)
+
 const fs = require('fs-extra')
-const test = require('baretest')('presta')
+const test = require('baretest')('wdg')
 const assert = require('assert')
+const path = require('path')
 
 const { fixtures, fixturesRoot } = require('./fixtures.js')
 
-const wait = t => new Promise(r => setTimeout(r, t))
+const wait = t => new Promise(resolve => setTimeout(resolve, t))
 
 function subscribe (event, instance) {
-  return new Promise(r => {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(reject, 30000)
+
     const close = instance.on(event, ids => {
+      clearTimeout(timeout)
       close()
-      r(ids)
+      resolve(ids)
     })
   })
 }
@@ -66,6 +72,24 @@ test('update common nested child', async () => {
 
   const after = require(fixtures.childOfChildren)
   assert(after.foo === true)
+
+  await instance.close()
+})
+
+test('update common nested child, clear require cache', async () => {
+  const instance = require('./')(fixtures.cachedEntry)
+
+  const subscriber = subscribe('update', instance)
+
+  const before = require(fixtures.cachedEntry)
+  assert(before.value === 0)
+
+  fs.outputFileSync(fixtures.cachedDeepChild, `module.exports = { value: 1 }`)
+
+  await subscriber
+
+  const after = require(fixtures.cachedEntry)
+  assert(after.value === 1)
 
   await instance.close()
 })
@@ -158,7 +182,7 @@ test('handles file rename by unwatching', async () => {
 })
 
 test('handles entry rename by restarting', async () => {
-  const instance = require('./')('./fixtures/*.entry.js')
+  const instance = require('./')(path.join(__dirname, './fixtures/*.entry.js'))
 
   const removed = subscribe('remove', instance)
 
@@ -177,7 +201,7 @@ test('handles entry rename by restarting', async () => {
 })
 
 test('handles adding new entry file', async () => {
-  const instance = require('./')('./fixtures/*.entry.js')
+  const instance = require('./')(path.join(__dirname, './fixtures/*.entry.js'))
 
   const added = subscribe('add', instance)
 
