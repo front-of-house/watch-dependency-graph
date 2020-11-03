@@ -4,13 +4,13 @@ const assert = require('assert')
 
 const { fixtures, fixturesRoot } = require('./fixtures.js')
 
-const wait = t => new Promise(r => setTimeout(r, t))
+const wait = t => new Promise(resolve => setTimeout(resolve, t))
 
 function subscribe (event, instance) {
-  return new Promise(r => {
+  return new Promise(resolve => {
     const close = instance.on(event, ids => {
       close()
-      r(ids)
+      resolve(ids)
     })
   })
 }
@@ -66,6 +66,24 @@ test('update common nested child', async () => {
 
   const after = require(fixtures.childOfChildren)
   assert(after.foo === true)
+
+  await instance.close()
+})
+
+test('update common nested child, clear require cache', async () => {
+  const instance = require('./')(fixtures.cachedEntry)
+
+  const subscriber = subscribe('update', instance)
+
+  const before = require(fixtures.cachedEntry)
+  assert(before.value === 0)
+
+  fs.outputFileSync(fixtures.cachedDeepChild, `module.exports = { value: 1 }`)
+
+  await subscriber
+
+  const after = require(fixtures.cachedEntry)
+  assert(after.value === 1)
 
   await instance.close()
 })

@@ -11,7 +11,12 @@ const fixtures = {
   A: path.join(fixturesRoot, 'A.entry.js'),
   B: path.join(fixturesRoot, 'B.entry.js'),
   renameableEntry: path.join(fixturesRoot, 'renameableEntry.entry.js'),
-  addedEntry: path.join(fixturesRoot, 'addedEntry.entry.js')
+  addedEntry: path.join(fixturesRoot, 'addedEntry.entry.js'),
+
+  // testing cache clearing
+  cachedDeepChild: path.join(fixturesRoot, 'cachedDeepChild.js'),
+  cachedChild: path.join(fixturesRoot, 'cachedChild.js'),
+  cachedEntry: path.join(fixturesRoot, 'cachedEntry.js')
 }
 
 fs.ensureDirSync(fixturesRoot)
@@ -30,6 +35,16 @@ fs.outputFileSync(
   `require('${fixtures.childOfB}'); require('${fixtures.commonDep}')`
 )
 fs.outputFileSync(fixtures.renameableEntry, `require('${fixtures.renameable}')`)
+
+fs.outputFileSync(fixtures.cachedDeepChild, `module.exports = { value: 0 }`)
+fs.outputFileSync(
+  fixtures.cachedChild,
+  `module.exports = require('./cachedDeepChild')`
+)
+fs.outputFileSync(
+  fixtures.cachedEntry,
+  `module.exports = require('./cachedChild')`
+)
 
 module.exports = {
   fixtures,

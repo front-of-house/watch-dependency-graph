@@ -33,7 +33,7 @@ function walk ({
       register[id].parents.push(currentPointer) // set entries
 
     // recurse, but only if we haven't walked these children yet
-    if (Boolean(childs.length && !visited.includes(id))) {
+    if (childs.length && !visited.includes(id)) {
       visited.push(id)
 
       walk({
@@ -46,6 +46,20 @@ function walk ({
         visited
       })
     }
+  }
+}
+
+function clearParentTree ({ parentPointers, ids, register }) {
+  for (const parentPointer of parentPointers) {
+    const parentId = ids[parentPointer]
+
+    delete require.cache[parentId]
+
+    clearParentTree({
+      parentPointers: register[parentId].parents,
+      ids,
+      register
+    })
   }
 }
 
@@ -132,7 +146,7 @@ module.exports = function graph (...globbies) {
           watcher.unwatch(f)
         }
       } else if (e === 'change') {
-        const { entries, children, parents } = register[fullEmittedFilepath]
+        const { entries, parents } = register[fullEmittedFilepath]
 
         const prev =
           require.cache[fullEmittedFilepath] || require(fullEmittedFilepath)
@@ -194,9 +208,7 @@ module.exports = function graph (...globbies) {
         }
 
         // clear modules that require this module
-        for (const parentPointer of parents) {
-          delete require.cache[ids[parentPointer]]
-        }
+        clearParentTree({ parentPointers: parents, ids, register })
 
         for (const entryPointer of entries) {
           const fileId = ids[entryPointer]
