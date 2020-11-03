@@ -22,8 +22,6 @@ jobs:
         run: npm i
       - name: Lint
         run: npm run lint
-      - name: Test
-        run: npm run test
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
