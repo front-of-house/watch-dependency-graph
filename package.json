@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "DEBUG=wdg node -r esm test",
+    "test": "node -r esm test",
     "test:watch": "npm run fixtures && nodemon -r esm test -i ./fixtures",
     "format": "prettier-standard --format",
     "lint": "prettier-standard --lint"

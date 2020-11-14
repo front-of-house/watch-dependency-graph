@@ -1,5 +1,4 @@
 const { EventEmitter } = require('events')
-const assert = require('assert')
 const chokidar = require('chokidar')
 const matched = require('matched')
 const uniq = require('@arr/unique')
@@ -87,8 +86,6 @@ module.exports = function graph (...globbies) {
     ids = []
     register = {}
     entries = getEntries(globs)
-
-    assert(entries.length, 'No entries found')
 
     for (const { id, children } of entries) {
       ids.push(id)

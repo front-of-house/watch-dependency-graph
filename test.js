@@ -259,6 +259,25 @@ test('resets listeners after close', async () => {
   assert(calls === 0)
 })
 
+test('watches for non-existing files', async () => {
+  const instance = require('./')(path.join(fixturesRoot, '*.ghost.js'))
+
+  const added = subscribe('add', instance)
+
+  await wait(500)
+
+  const ghostFile = path.join(fixturesRoot, 'a.ghost.js')
+
+  fs.outputFileSync(ghostFile, 'module.exports = {}')
+
+  const ids = await added
+
+  assert(ids.includes(ghostFile))
+  assert(instance.ids.includes(ghostFile))
+
+  await instance.close()
+})
+
 !(async function () {
   console.time('test')
   await test.run()
