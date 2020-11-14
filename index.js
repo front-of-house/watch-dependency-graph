@@ -88,8 +88,6 @@ module.exports = function graph (...globbies) {
     register = {}
     entries = getEntries(globs)
 
-    assert(entries.length, 'No entries found')
-
     for (const { id, children } of entries) {
       ids.push(id)
 
