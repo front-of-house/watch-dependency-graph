@@ -1,5 +1,4 @@
 const { EventEmitter } = require('events')
-const assert = require('assert')
 const chokidar = require('chokidar')
 const matched = require('matched')
 const uniq = require('@arr/unique')
