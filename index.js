@@ -1,245 +1,289 @@
-const { EventEmitter } = require('events')
-const chokidar = require('chokidar')
-const matched = require('matched')
-const uniq = require('@arr/unique')
+const path = require('path')
+const filewatcher = require('filewatcher')
 const debug = require('debug')('wdg')
 
-function walk ({
-  ids,
-  register,
-  entryPointer,
-  currentPointer,
-  childrenOfCurrent,
-  nextChildren,
-  visited = []
-}) {
-  for (const { id, children: childs } of nextChildren) {
-    // push to all files
-    if (!ids.includes(id)) ids.push(id)
+function clearUp (ids, tree, parentPointers) {
+  for (const p of parentPointers) {
+    const id = ids[p]
 
-    const pointer = ids.indexOf(id)
+    delete require.cache[id]
 
-    // push to previous parent's children
-    if (!childrenOfCurrent.includes(pointer)) childrenOfCurrent.push(pointer)
+    clearUp(ids, tree, tree[id].parentPointers)
+  }
+}
 
-    // set module values
-    if (!register[id])
-      register[id] = { pointer, entries: [], children: [], parents: [] } // setup
-    if (!register[id].entries.includes(entryPointer))
-      register[id].entries.push(entryPointer) // set entries
-    if (!register[id].parents.includes(currentPointer))
-      register[id].parents.push(currentPointer) // set entries
+function loadEntries (entries, { cwd }) {
+  const files = entries.map(entry => path.resolve(cwd, entry))
 
-    // recurse, but only if we haven't walked these children yet
-    if (childs.length && !visited.includes(id)) {
-      visited.push(id)
+  files.forEach(require) // load modules
 
-      walk({
+  const mostRecentChildren = []
+
+  /**
+   * children[] keeps growing, so we need to grab the latest
+   * modules that match the entries
+   *
+   * reverse the children, pick the first that match
+   */
+  for (const c of module.children.reverse()) {
+    if (files.includes(c.id)) mostRecentChildren.push(c)
+  }
+
+  return mostRecentChildren
+}
+
+function walk (modules, context) {
+  const { ids, tree, visitedIds = [], entryPointer, parentPointer } = context
+
+  for (const mod of modules) {
+    if (!ids.includes(mod.id)) ids.push(mod.id)
+
+    const selfPointer = ids.indexOf(mod.id)
+
+    // setup
+    if (!tree[mod.id]) {
+      tree[mod.id] = {
+        pointer: selfPointer,
+        entryPointers: [],
+        parentPointers: [],
+        childrenPointers: []
+      }
+    }
+
+    const leaf = tree[mod.id]
+
+    if (entryPointer === undefined) {
+      // must be an entry itself
+      leaf.entryPointers = [selfPointer]
+    } else if (
+      entryPointer !== undefined &&
+      !leaf.entryPointers.includes(entryPointer)
+    ) {
+      leaf.entryPointers.push(entryPointer)
+    }
+
+    if (
+      parentPointer !== undefined &&
+      !leaf.parentPointers.includes(parentPointer)
+    ) {
+      leaf.parentPointers.push(parentPointer)
+    }
+
+    const parentLeaf = tree[ids[parentPointer]]
+
+    if (parentLeaf && !parentLeaf.childrenPointers.includes(selfPointer)) {
+      parentLeaf.childrenPointers.push(selfPointer)
+    }
+
+    if (mod.children.length && !visitedIds.includes(mod.id)) {
+      visitedIds.push(mod.id)
+
+      walk(mod.children, {
         ids,
-        register,
-        entryPointer,
-        currentPointer: pointer,
-        childrenOfCurrent: register[id].children,
-        nextChildren: childs,
-        visited
+        tree,
+        visitedIds,
+        entryPointer: entryPointer === undefined ? selfPointer : entryPointer,
+        parentPointer: selfPointer
       })
     }
   }
 }
 
-function clearParentTree ({ parentPointers, ids, register }) {
-  for (const parentPointer of parentPointers) {
-    const parentId = ids[parentPointer]
+function emitter () {
+  let events = {}
 
-    delete require.cache[parentId]
-
-    clearParentTree({
-      parentPointers: register[parentId].parents,
-      ids,
-      register
-    })
+  return {
+    emit (ev, ...args) {
+      return events[ev] ? events[ev].map(fn => fn(...args)) : []
+    },
+    on (ev, fn) {
+      events[ev] = events[ev] ? events[ev].concat(fn) : [fn]
+      return () => events[ev].slice(events[ev].indexOf(fn), 1)
+    },
+    clear () {
+      events = {}
+    },
+    listeners (ev) {
+      return events[ev] || []
+    }
   }
 }
 
-function getEntries (globs) {
-  const files = uniq(globs.map(matched.sync).flat(2))
+module.exports = function graph (options) {
+  debug('initialized with', { options })
 
-  files.map(require) // load modules
-
-  return module.children.filter(({ id }) => files.includes(id))
-}
-
-module.exports = function graph (...globbies) {
-  const globs = globbies.flat(2)
+  const { cwd = process.cwd() } = options
 
   // once instance
-  const events = new EventEmitter()
+  const events = emitter()
 
   // all generated from factory
   let ids = []
-  let register = {}
-  let entries = []
+  let tree = {}
   let watcher
+  let modules = []
+  let entries = []
 
-    // kick it off
-  ;(function init () {
+  function bootstrap () {
     ids = []
-    register = {}
-    entries = getEntries(globs)
+    tree = {}
 
-    for (const { id, children } of entries) {
-      ids.push(id)
-
-      const entryPointer = ids.indexOf(id) // get pointer
-
-      register[id] = {
-        pointer: entryPointer,
-        entries: [entryPointer], // self-referential
-        parents: [],
-        children: []
-      }
-
-      if (children) {
-        walk({
-          ids,
-          register,
-          entryPointer,
-          currentPointer: entryPointer,
-          childrenOfCurrent: register[id].children,
-          nextChildren: children
-        })
-      }
+    try {
+      modules = loadEntries(entries, { cwd })
+    } catch (e) {
+      events.emit('error', e)
+      if (!events.listeners('error').length) console.error(e)
     }
 
-    watcher = chokidar.watch(globs.concat(ids), { ignoreInitial: true })
-
-    watcher.on('all', async (e, f) => {
-      debug('chokidar', e, f)
-
-      const fullEmittedFilepath = require.resolve(f)
-
-      debug('fullEmittedFilepath', fullEmittedFilepath)
-
-      if (e === 'add') {
-        await watcher.close()
-        events.emit('add', [fullEmittedFilepath])
-        init()
-        // shouldn't ever happen
-      } else if (e === 'unlink') {
-        const removedModule = entries.find(e => e.id === f)
-        // an *entry* was renamed or removed
-        if (removedModule) {
-          await watcher.close()
-          events.emit('remove', [removedModule.id])
-          init()
-        } else {
-          watcher.unwatch(f)
-        }
-      } else if (e === 'change') {
-        const { entries, parents } = register[fullEmittedFilepath]
-
-        const prev =
-          require.cache[fullEmittedFilepath] || require(fullEmittedFilepath)
-        delete require.cache[fullEmittedFilepath]
-        require(fullEmittedFilepath)
-        const next = require.cache[fullEmittedFilepath]
-
-        // diff prev/next
-        const removedModuleIds = (prev.children || [])
-          .filter(c => !(next.children || []).find(_c => _c.id === c.id))
-          .map(c => c.id)
-
-        // add to watch instance
-        next.children
-          .filter(c => !(prev.children || []).find(_c => _c.id === c.id))
-          .forEach(c => watcher.add(c.id))
-
-        for (const removedModuleId of removedModuleIds) {
-          let isModuleStillInUse = false
-          const removedModulePointer = ids.indexOf(removedModuleId)
-
-          for (const filepath of Object.keys(register)) {
-            if (filepath === fullEmittedFilepath) {
-              const localChildren = register[filepath].children
-              const localPointer = localChildren.indexOf(removedModulePointer)
-
-              /*
-               * for any entries of the file that changed, remove them from childen
-               * of this file
-               */
-              for (const entryPointer of register[filepath].entries) {
-                for (const localChildPointer of localChildren) {
-                  const localChildFile = ids[localChildPointer]
-                  const localChildEntries = register[localChildFile].entries
-                  localChildEntries.splice(
-                    localChildEntries.indexOf(entryPointer),
-                    1
-                  )
-                }
-              }
-
-              // clean up the children of this file last
-              register[filepath].children.splice(localPointer, 1)
-            } else {
-              // don't accidentally reset back to false on another iteration
-              if (isModuleStillInUse) continue
-
-              isModuleStillInUse = register[filepath].children.includes(
-                removedModulePointer
-              )
-            }
-          }
-
-          if (!isModuleStillInUse) {
-            ids.splice(removedModulePointer, 1)
-            delete register[removedModuleId]
-            watcher.unwatch(removedModuleId)
-          }
-        }
-
-        // clear modules that require this module
-        clearParentTree({ parentPointers: parents, ids, register })
-
-        for (const entryPointer of entries) {
-          const fileId = ids[entryPointer]
-
-          // clear entries so users can re-require
-          delete require.cache[fileId]
-
-          walk({
-            ids,
-            register,
-            entryPointer,
-            currentPointer: entryPointer,
-            childrenOfCurrent: register[fileId].children,
-            nextChildren: next.children
-          })
-        }
-
-        events.emit(
-          'update',
-          entries.map(p => ids[p])
-        )
-      }
+    walk(modules, {
+      ids,
+      tree
     })
-  })()
+  }
+
+  function cleanById (id) {
+    const { pointer, parentPointers, childrenPointers } = tree[id]
+
+    delete tree[id]
+
+    for (const p of parentPointers) {
+      const children = tree[ids[p]].childrenPointers
+      children.splice(children.indexOf(pointer), 1)
+    }
+
+    for (const p of childrenPointers) {
+      const parents = tree[ids[p]].parentPointers
+      parents.splice(parents.indexOf(pointer), 1)
+    }
+
+    ids.splice(pointer, 1)
+
+    watcher.remove(id)
+  }
+
+  /**
+   * Diff and update watch
+   */
+  function restart () {
+    const prevIds = ids
+
+    bootstrap()
+
+    const nextIds = ids
+    const addedIds = nextIds.filter(id => !prevIds.includes(id))
+    const removedIds = prevIds.filter(id => !nextIds.includes(id))
+
+    debug('diff', { addedIds, removedIds })
+
+    for (const id of addedIds) {
+      watcher.add(id)
+    }
+
+    for (const id of removedIds) {
+      watcher.remove(id)
+    }
+  }
+
+  function handleChange (file) {
+    const { entryPointers } = tree[file]
+
+    // bust cache for all involved files up the tree
+    clearUp(ids, tree, [ids.indexOf(file)])
+
+    events.emit(
+      'change',
+      entryPointers.map(p => ids[p])
+    )
+  }
+
+  watcher = filewatcher()
+
+  watcher.on('change', async (file, stat) => {
+    if (stat.deleted) {
+      debug('remove', file)
+
+      const { pointer, entryPointers } = tree[file]
+
+      // is an entry itself
+      if (entryPointers.includes(pointer)) {
+        events.emit('remove', [ids[pointer]])
+
+        entries.splice(ids[pointer], 1)
+
+        restart()
+      } else {
+        handleChange(file)
+        cleanById(file)
+      }
+    } else {
+      debug('change', file)
+
+      handleChange(file)
+
+      restart()
+    }
+  })
 
   return {
     get ids () {
       return ids
     },
-    get register () {
-      return register
+    get tree () {
+      return tree
     },
     on (ev, fn) {
-      events.on(ev, fn)
-      return () => events.removeListener(ev, fn)
+      return events.on(ev, fn)
     },
-    async close () {
-      events.removeAllListeners('update')
-      events.removeAllListeners('add')
-      events.removeAllListeners('remove')
-      return watcher.close()
+    close () {
+      events.clear()
+      watcher.removeAll()
+      watcher.removeAllListeners()
+    },
+    add (files) {
+      files = [].concat(files).filter(entry => {
+        // filter out any already watched files
+        if (entries.includes(entry)) return false
+
+        const isAbs = path.isAbsolute(entry)
+
+        if (!isAbs) {
+          events.emit(
+            'error',
+            new Error(
+              `Watched file must be an absolute path, you passed ${entry}. Ignoring...`
+            )
+          )
+        }
+
+        return isAbs
+      })
+
+      entries.push(...files)
+
+      restart()
+    },
+    remove (files) {
+      files = [].concat(files).filter(entry => {
+        const isAbs = path.isAbsolute(entry)
+
+        if (!isAbs) {
+          events.emit(
+            'error',
+            new Error(
+              `Files to remove must be absolute paths, you passed ${entry}. Ignoring...`
+            )
+          )
+        }
+
+        return isAbs
+      })
+
+      events.emit('remove', files)
+
+      for (const file of files) {
+        if (entries.includes(file)) entries.splice(file, 1)
+        restart()
+      }
     }
   }
 }
