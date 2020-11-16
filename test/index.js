@@ -206,6 +206,52 @@ test('handles shared deps', async () => {
   fsx.cleanup()
 })
 
+test('handles inverse tree', async () => {
+  const files = {
+    a: {
+      url: './inverse-tree/a.js',
+      content: `
+        import c from './c.js'
+        export default ''
+      `
+    },
+    b: {
+      url: './inverse-tree/b.js',
+      content: `
+        import c from './c.js'
+        export default ''
+      `
+    },
+    c: {
+      url: './inverse-tree/c.js',
+      content: `
+        import d from './d.js'
+        export default ''
+      `
+    },
+    d: {
+      url: './inverse-tree/d.js',
+      content: `
+        export default ''
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a, fsx.files.b])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(tree[fsx.files.d].entryPointers.includes(tree[fsx.files.a].pointer))
+  assert(tree[fsx.files.d].entryPointers.includes(tree[fsx.files.b].pointer))
+
+  w.close()
+  fsx.cleanup()
+})
+
 test('emits change when entry file is updated', async () => {
   const files = {
     a: {

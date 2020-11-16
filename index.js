@@ -27,13 +27,14 @@ function loadEntries (entries, { cwd }) {
    */
   for (const c of module.children.reverse()) {
     if (files.includes(c.id)) mostRecentChildren.push(c)
+    if (mostRecentChildren.length === files.length) break
   }
 
   return mostRecentChildren
 }
 
 function walk (modules, context) {
-  const { ids, tree, visitedIds = [], entryPointer, parentPointer } = context
+  const { ids, tree, entryPointer, parentPointer } = context
 
   for (const mod of modules) {
     if (!ids.includes(mod.id)) ids.push(mod.id)
@@ -75,13 +76,10 @@ function walk (modules, context) {
       parentLeaf.childrenPointers.push(selfPointer)
     }
 
-    if (mod.children.length && !visitedIds.includes(mod.id)) {
-      visitedIds.push(mod.id)
-
+    if (mod.children.length) {
       walk(mod.children, {
         ids,
         tree,
-        visitedIds,
         entryPointer: entryPointer === undefined ? selfPointer : entryPointer,
         parentPointer: selfPointer
       })
@@ -109,7 +107,7 @@ function emitter () {
   }
 }
 
-module.exports = function graph (options) {
+module.exports = function graph (options = {}) {
   debug('initialized with', { options })
 
   const { cwd = process.cwd() } = options
