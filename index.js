@@ -15,22 +15,18 @@ function clearUp (ids, tree, parentPointers) {
 function loadEntries (entries, { cwd }) {
   const files = entries.map(entry => path.resolve(cwd, entry))
 
-  files.forEach(require) // load modules
-
-  const mostRecentChildren = []
-
-  /**
-   * children[] keeps growing, so we need to grab the latest
-   * modules that match the entries
-   *
-   * reverse the children, pick the first that match
-   */
-  for (const c of module.children.reverse()) {
-    if (files.includes(c.id)) mostRecentChildren.push(c)
-    if (mostRecentChildren.length === files.length) break
+  // remove old child entry from require.main (this file)
+  for (const file of files) {
+    module.children.splice(
+      module.children.findIndex(c => c.id === file),
+      1
+    )
   }
 
-  return mostRecentChildren
+  // load entry modules as children of this module
+  files.forEach(require)
+
+  return module.children.filter(c => files.includes(c.id))
 }
 
 function walk (modules, context) {
@@ -123,6 +119,8 @@ module.exports = function graph (options = {}) {
   let entries = []
 
   function bootstrap () {
+    debug('bootstrapping', entries)
+
     ids = []
     tree = {}
 
@@ -132,6 +130,8 @@ module.exports = function graph (options = {}) {
       events.emit('error', e)
       if (!events.listeners('error').length) console.error(e)
     }
+
+    debug('modules', modules.length)
 
     walk(modules, {
       ids,
