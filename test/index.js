@@ -206,6 +206,39 @@ test('handles shared deps', async () => {
   fsx.cleanup()
 })
 
+test('handles circular deps', async () => {
+  const files = {
+    a: {
+      url: './circular/a.js',
+      content: `
+        import b from './b.js'
+        export default ''
+      `
+    },
+    b: {
+      url: './circular/b.js',
+      content: `
+        import a from './a.js'
+        export default ''
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a, fsx.files.b])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(tree[fsx.files.a].childrenPointers.includes(tree[fsx.files.b].pointer))
+  assert(tree[fsx.files.b].childrenPointers.includes(tree[fsx.files.a].pointer))
+
+  w.close()
+  fsx.cleanup()
+})
+
 test('handles inverse tree', async () => {
   const files = {
     a: {

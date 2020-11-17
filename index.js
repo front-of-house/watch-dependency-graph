@@ -30,7 +30,7 @@ function loadEntries (entries, { cwd }) {
 }
 
 function walk (modules, context) {
-  const { ids, tree, entryPointer, parentPointer } = context
+  const { ids, tree, entryPointer, parentPointer, visitedTree = {} } = context
 
   for (const mod of modules) {
     if (!ids.includes(mod.id)) ids.push(mod.id)
@@ -38,6 +38,7 @@ function walk (modules, context) {
     const selfPointer = ids.indexOf(mod.id)
     const safeEntryPointer =
       entryPointer === undefined ? selfPointer : entryPointer
+    const entryFilename = ids[safeEntryPointer]
 
     // setup
     if (!tree[mod.id]) {
@@ -68,12 +69,19 @@ function walk (modules, context) {
       parentLeaf.childrenPointers.push(selfPointer)
     }
 
-    if (mod.children.length) {
+    if (!visitedTree[entryFilename]) {
+      visitedTree[entryFilename] = []
+    }
+
+    if (mod.children.length && !visitedTree[entryFilename].includes(mod.id)) {
+      visitedTree[entryFilename].push(mod.id)
+
       walk(mod.children, {
         ids,
         tree,
         entryPointer: safeEntryPointer,
-        parentPointer: selfPointer
+        parentPointer: selfPointer,
+        visitedTree
       })
     }
   }
