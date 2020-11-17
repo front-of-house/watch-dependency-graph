@@ -36,6 +36,8 @@ function walk (modules, context) {
     if (!ids.includes(mod.id)) ids.push(mod.id)
 
     const selfPointer = ids.indexOf(mod.id)
+    const safeEntryPointer =
+      entryPointer === undefined ? selfPointer : entryPointer
 
     // setup
     if (!tree[mod.id]) {
@@ -49,14 +51,8 @@ function walk (modules, context) {
 
     const leaf = tree[mod.id]
 
-    if (entryPointer === undefined) {
-      // must be an entry itself
-      leaf.entryPointers = [selfPointer]
-    } else if (
-      entryPointer !== undefined &&
-      !leaf.entryPointers.includes(entryPointer)
-    ) {
-      leaf.entryPointers.push(entryPointer)
+    if (!leaf.entryPointers.includes(safeEntryPointer)) {
+      leaf.entryPointers.push(safeEntryPointer)
     }
 
     if (
@@ -76,7 +72,7 @@ function walk (modules, context) {
       walk(mod.children, {
         ids,
         tree,
-        entryPointer: entryPointer === undefined ? selfPointer : entryPointer,
+        entryPointer: safeEntryPointer,
         parentPointer: selfPointer
       })
     }
