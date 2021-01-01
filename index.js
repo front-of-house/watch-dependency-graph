@@ -1,6 +1,8 @@
+const fs = require('fs')
 const path = require('path')
 const filewatcher = require('filewatcher')
 const debug = require('debug')('wdg')
+const acorn = require('acorn-loose')
 
 function clearUp (ids, tree, parentPointers) {
   for (const p of parentPointers) {
@@ -9,81 +11,6 @@ function clearUp (ids, tree, parentPointers) {
     delete require.cache[id]
 
     clearUp(ids, tree, tree[id].parentPointers)
-  }
-}
-
-function loadEntries (entries, { cwd }) {
-  const files = entries.map(entry => path.resolve(cwd, entry))
-
-  // remove old child entry from require.main (this file)
-  for (const file of files) {
-    module.children.splice(
-      module.children.findIndex(c => c.id === file),
-      1
-    )
-  }
-
-  // load entry modules as children of this module
-  files.forEach(require)
-
-  return module.children.filter(c => files.includes(c.id))
-}
-
-function walk (modules, context) {
-  const { ids, tree, entryPointer, parentPointer, visitedTree = {} } = context
-
-  for (const mod of modules) {
-    if (!ids.includes(mod.id)) ids.push(mod.id)
-
-    const selfPointer = ids.indexOf(mod.id)
-    const safeEntryPointer =
-      entryPointer === undefined ? selfPointer : entryPointer
-    const entryFilename = ids[safeEntryPointer]
-
-    // setup
-    if (!tree[mod.id]) {
-      tree[mod.id] = {
-        pointer: selfPointer,
-        entryPointers: [],
-        parentPointers: [],
-        childrenPointers: []
-      }
-    }
-
-    const leaf = tree[mod.id]
-
-    if (!leaf.entryPointers.includes(safeEntryPointer)) {
-      leaf.entryPointers.push(safeEntryPointer)
-    }
-
-    if (
-      parentPointer !== undefined &&
-      !leaf.parentPointers.includes(parentPointer)
-    ) {
-      leaf.parentPointers.push(parentPointer)
-    }
-
-    const parentLeaf = tree[ids[parentPointer]]
-
-    if (parentLeaf && !parentLeaf.childrenPointers.includes(selfPointer)) {
-      parentLeaf.childrenPointers.push(selfPointer)
-    }
-
-    if (!visitedTree[entryFilename]) {
-      visitedTree[entryFilename] = []
-    }
-
-    if (mod.children.length && !visitedTree[entryFilename].includes(mod.id)) {
-      visitedTree[entryFilename].push(mod.id)
-
-      walk(mod.children, {
-        ids,
-        tree,
-        entryPointer: safeEntryPointer,
-        parentPointer: selfPointer,
-        visitedTree
-      })
-    }
   }
 }
 
@@ -107,10 +34,75 @@ function emitter () {
   }
 }
 
+function walk (node, context) {
+  const {
+    ids,
+    tree,
+    workingDirectory,
+    entryPointer,
+    parentPointer,
+    visitedTree = {}
+  } = context
+
+  let id
+
+  if (node.type === 'ImportDeclaration') {
+    id = path.join(workingDirectory, node.source.value)
+  }
+
+  if (id) {
+    id = require.resolve(id)
+
+    if (!ids.includes(id)) ids.push(id)
+
+    const pointer = ids.indexOf(id)
+
+    if (!tree[id]) {
+      tree[id] = {
+        pointer,
+        entryPointers: [entryPointer],
+        parentPointers: [parentPointer],
+        childrenPointers: []
+      }
+    } else {
+      const leaf = tree[id]
+      if (!leaf.entryPointers.includes(entryPointer))
+        leaf.entryPointers.push(entryPointer)
+      if (!leaf.parentPointers.includes(parentPointer))
+        leaf.parentPointers.push(parentPointer)
+    }
+
+    const parentLeaf = tree[ids[parentPointer]]
+
+    if (!parentLeaf.childrenPointers.includes(pointer))
+      parentLeaf.childrenPointers.push(pointer)
+
+    const visitedLeaf = visitedTree[ids[entryPointer]]
+
+    if (!visitedLeaf.includes(id)) {
+      visitedLeaf.push(id)
+
+      const ast = acorn.parse(fs.readFileSync(id, 'utf-8'), {
+        ecmaVersion: 2015,
+        sourceType: 'module'
+      })
+
+      for (const node of ast.body) {
+        walk(node, {
+          ids,
+          tree,
+          workingDirectory: path.dirname(id),
+          entryPointer,
+          parentPointer: pointer,
+          visitedTree
+        })
+      }
+    }
+  }
+}
+
 module.exports = function graph (options = {}) {
   debug('initialized with', { options })
-
-  const { cwd = process.cwd() } = options
 
   // once instance
   const events = emitter()
@@ -119,7 +111,6 @@ module.exports = function graph (options = {}) {
   let ids = []
   let tree = {}
   let watcher
-  let modules = []
   let entries = []
 
   function bootstrap () {
@@ -128,19 +119,43 @@ module.exports = function graph (options = {}) {
     ids = []
     tree = {}
 
-    try {
-      modules = loadEntries(entries, { cwd })
-    } catch (e) {
-      events.emit('error', e)
-      if (!events.listeners('error').length) console.error(e)
+    const visitedTree = {}
+
+    for (const id of entries) {
+      if (!ids.includes(id)) ids.push(id)
+
+      const pointer = ids.indexOf(id)
+
+      if (!tree[id]) {
+        tree[id] = {
+          pointer,
+          entryPointers: [pointer],
+          parentPointers: [],
+          childrenPointers: []
+        }
+      } else {
+        if (!tree[id].entryPointers.includes(pointer))
+          tree[id].entryPointers.push(pointer)
+      }
+
+      visitedTree[id] = []
+
+      const ast = acorn.parse(fs.readFileSync(id, 'utf-8'), {
+        ecmaVersion: 2015,
+        sourceType: 'module'
+      })
+
+      for (const node of ast.body) {
+        walk(node, {
+          ids,
+          tree,
+          workingDirectory: path.dirname(id),
+          entryPointer: pointer,
+          parentPointer: pointer,
+          visitedTree
+        })
+      }
     }
-
-    debug('modules', modules.length)
-
-    walk(modules, {
-      ids,
-      tree
-    })
   }
 
   function cleanById (id) {

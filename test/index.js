@@ -64,7 +64,7 @@ test('ignores non-absolute paths', async () => {
 test('constructs valid tree', async () => {
   const files = {
     a: {
-      url: './valid/a.js',
+      url: './valid/a',
       content: `
         import a_a from './a_a'
         import a_b from './a_b'
@@ -72,20 +72,20 @@ test('constructs valid tree', async () => {
       `
     },
     a_a: {
-      url: './valid/a_a.js',
+      url: './valid/a_a',
       content: `
         import a_a_a from './a_a_a'
         export default ''
       `
     },
     a_a_a: {
-      url: './valid/a_a_a.js',
+      url: './valid/a_a_a',
       content: `
         export default ''
       `
     },
     a_b: {
-      url: './valid/a_b.js',
+      url: './valid/a_b',
       content: `
         export default ''
       `
@@ -280,6 +280,76 @@ test('handles inverse tree', async () => {
 
   assert(tree[fsx.files.d].entryPointers.includes(tree[fsx.files.a].pointer))
   assert(tree[fsx.files.d].entryPointers.includes(tree[fsx.files.b].pointer))
+
+  w.close()
+  fsx.cleanup()
+})
+
+test('correctly generates filepaths', async () => {
+  const files = {
+    a: {
+      url: './filepaths/a.js',
+      content: `
+        import a_b from './lib/a_b.js'
+        export default ''
+      `
+    },
+    a_b: {
+      url: './filepaths/lib/a_b.js',
+      content: `
+        import a_b_a from '../util/a_b_a.js'
+        export default ''
+      `
+    },
+    a_b_a: {
+      url: './filepaths/util/a_b_a.js',
+      content: `
+        export default ''
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.a_b])
+  assert(!!tree[fsx.files.a_b_a])
+
+  w.close()
+  fsx.cleanup()
+})
+
+test('handles syntax error', async () => {
+  const files = {
+    a: {
+      url: './syntax/a.js',
+      content: `
+        import a_b from './a_b.js'
+        export default ''
+      `
+    },
+    a_b: {
+      url: './syntax/a_b.js',
+      content: `
+        export default () => <div />
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.a_b])
 
   w.close()
   fsx.cleanup()
