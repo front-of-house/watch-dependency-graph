@@ -38,7 +38,9 @@
     "acorn-loose": "^8.0.1",
     "acorn-walk": "^8.0.0",
     "debug": "^4.2.0",
-    "filewatcher": "^3.0.1"
+    "filewatcher": "^3.0.1",
+    "module-alias": "^2.2.2",
+    "resolve": "^1.19.0"
   },
   "devDependencies": {
     "baretest": "^2.0.0",

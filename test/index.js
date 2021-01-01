@@ -1,16 +1,18 @@
-import fs from 'fs-extra'
-import path from 'path'
-import assert from 'assert'
-import baretest from 'baretest'
+const fs = require('fs-extra')
+const path = require('path')
+const assert = require('assert')
+const test = require('baretest')('wdg')
 
-import * as fixtures from './fixtures.js'
-import graph from '../'
+const fixtures = require('./fixtures')
+const graph = require('../')
 
 fixtures.setRoot(path.join(__dirname, 'fixtures'))
 
-const DELAY = 500
+process.chdir(fixtures.getRoot())
 
-const test = baretest('wdg')
+fs.emptyDirSync(fixtures.getRoot())
+
+const DELAY = 500
 
 const wait = t => new Promise(resolve => setTimeout(resolve, t))
 
@@ -64,7 +66,7 @@ test('ignores non-absolute paths', async () => {
 test('constructs valid tree', async () => {
   const files = {
     a: {
-      url: './valid/a',
+      url: './valid/a.js',
       content: `
         import a_a from './a_a'
         import a_b from './a_b'
@@ -72,20 +74,20 @@ test('constructs valid tree', async () => {
       `
     },
     a_a: {
-      url: './valid/a_a',
+      url: './valid/a_a.js',
       content: `
         import a_a_a from './a_a_a'
         export default ''
       `
     },
     a_a_a: {
-      url: './valid/a_a_a',
+      url: './valid/a_a_a.js',
       content: `
         export default ''
       `
     },
     a_b: {
-      url: './valid/a_b',
+      url: './valid/a_b.js',
       content: `
         export default ''
       `
@@ -324,6 +326,37 @@ test('correctly generates filepaths', async () => {
   fsx.cleanup()
 })
 
+test('support aliases error', async () => {
+  const files = {
+    a: {
+      url: './aliases/a.js',
+      content: `
+        import a_b from '@/aliases/a_b.js'
+        export default ''
+      `
+    },
+    a_b: {
+      url: './aliases/a_b.js',
+      content: `
+        export default () => {}
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.a_b])
+
+  w.close()
+  fsx.cleanup()
+})
+
 test('handles syntax error', async () => {
   const files = {
     a: {
@@ -355,6 +388,112 @@ test('handles syntax error', async () => {
   fsx.cleanup()
 })
 
+test('supports other imports', async () => {
+  const files = {
+    a: {
+      url: './imports/a.js',
+      content: `
+        import * as a_b from './a_b.js'
+        import { a_c } from './a_c.js'
+        const a_d = require('./a_d.js')
+        export default ''
+      `
+    },
+    a_b: {
+      url: './imports/a_b.js',
+      content: `
+        export const a_b () => {}
+      `
+    },
+    a_c: {
+      url: './imports/a_c.js',
+      content: `
+        export const a_c () => {}
+      `
+    },
+    a_d: {
+      url: './imports/a_d.js',
+      content: `
+        module.exports = { a_d() {} }
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.a_b])
+  assert(!!tree[fsx.files.a_c])
+  assert(!!tree[fsx.files.a_d])
+
+  w.close()
+  fsx.cleanup()
+})
+
+test('supports other extensions', async () => {
+  const files = {
+    a: {
+      url: './extensions/a.js',
+      content: `
+        import * as a_b from './a_b.ts'
+        export default ''
+      `
+    },
+    a_b: {
+      url: './extensions/a_b.ts',
+      content: `
+        export const a_b () => {}
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.a_b])
+
+  w.close()
+  fsx.cleanup()
+})
+
+test('supports node_modules', async () => {
+  const files = {
+    a: {
+      url: './node_modules/a.js',
+      content: `
+        const assert = require('assert')
+        const baretest = require('baretest')
+      `
+    }
+  }
+  require.resolve('assert')
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.a])
+  assert(!!tree[require.resolve('baretest')])
+  assert(!!tree[require.resolve('barecolor')])
+
+  w.close()
+  fsx.cleanup()
+})
+
 test('emits change when entry file is updated', async () => {
   const files = {
     a: {
@@ -375,7 +514,6 @@ test('emits change when entry file is updated', async () => {
   fs.outputFileSync(
     fsx.files.a,
     `
-      import a_a from './a_a.js'
       export default 'foo'
     `
   )

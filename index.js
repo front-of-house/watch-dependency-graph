@@ -3,6 +3,7 @@ const path = require('path')
 const filewatcher = require('filewatcher')
 const debug = require('debug')('wdg')
 const acorn = require('acorn-loose')
+const { createRequire } = require('module')
 
 function clearUp (ids, tree, parentPointers) {
   for (const p of parentPointers) {
@@ -34,69 +35,91 @@ function emitter () {
   }
 }
 
-function walk (node, context) {
-  const {
-    ids,
-    tree,
-    workingDirectory,
-    entryPointer,
-    parentPointer,
-    visitedTree = {}
-  } = context
-
-  let id
+function getFileIdsFromAstNode (node, { workingDirectory }) {
+  const ids = []
 
   if (node.type === 'ImportDeclaration') {
-    id = path.join(workingDirectory, node.source.value)
+    ids.push(node.source.value)
+  } else if (node.type === 'VariableDeclaration') {
+    for (const dec of node.declarations) {
+      if (dec.init.type === 'CallExpression') {
+        if (dec.init.callee.name === 'require') {
+          ids.push(dec.init.arguments[0].value)
+        }
+      }
+    }
   }
 
-  if (id) {
-    id = require.resolve(id)
+  return ids
+    .map(id => {
+      const req = createRequire(workingDirectory)
+      let resolved
 
-    if (!ids.includes(id)) ids.push(id)
-
-    const pointer = ids.indexOf(id)
-
-    if (!tree[id]) {
-      tree[id] = {
-        pointer,
-        entryPointers: [entryPointer],
-        parentPointers: [parentPointer],
-        childrenPointers: []
+      try {
+        resolved = req.resolve(id)
+      } catch (e) {
+        resolved = /^@/.test(id)
+          ? req.resolve(path.join(process.cwd(), id.split('@')[1]))
+          : require.resolve(id)
       }
-    } else {
-      const leaf = tree[id]
-      if (!leaf.entryPointers.includes(entryPointer))
-        leaf.entryPointers.push(entryPointer)
-      if (!leaf.parentPointers.includes(parentPointer))
-        leaf.parentPointers.push(parentPointer)
+
+      return resolved === id ? undefined : resolved
+    })
+    .filter(Boolean)
+}
+
+function walk (id, context) {
+  const { ids, tree, entryPointer, parentPointer, visitedTree = {} } = context
+
+  if (!ids.includes(id)) ids.push(id)
+
+  const pointer = ids.indexOf(id)
+
+  if (!tree[id]) {
+    tree[id] = {
+      pointer,
+      entryPointers: [entryPointer],
+      parentPointers: [parentPointer],
+      childrenPointers: []
     }
+  } else {
+    const leaf = tree[id]
+    if (!leaf.entryPointers.includes(entryPointer))
+      leaf.entryPointers.push(entryPointer)
+    if (!leaf.parentPointers.includes(parentPointer))
+      leaf.parentPointers.push(parentPointer)
+  }
 
-    const parentLeaf = tree[ids[parentPointer]]
+  const parentLeaf = tree[ids[parentPointer]]
 
-    if (!parentLeaf.childrenPointers.includes(pointer))
-      parentLeaf.childrenPointers.push(pointer)
+  if (!parentLeaf.childrenPointers.includes(pointer))
+    parentLeaf.childrenPointers.push(pointer)
 
-    const visitedLeaf = visitedTree[ids[entryPointer]]
+  const visitedLeaf = visitedTree[ids[entryPointer]]
 
-    if (!visitedLeaf.includes(id)) {
-      visitedLeaf.push(id)
+  if (!visitedLeaf.includes(id)) {
+    visitedLeaf.push(id)
 
+    try {
       const ast = acorn.parse(fs.readFileSync(id, 'utf-8'), {
         ecmaVersion: 2015,
         sourceType: 'module'
       })
+      const workingDirectory = id
 
       for (const node of ast.body) {
-        walk(node, {
-          ids,
-          tree,
-          workingDirectory: path.dirname(id),
-          entryPointer,
-          parentPointer: pointer,
-          visitedTree
-        })
+        for (const _id of getFileIdsFromAstNode(node, { workingDirectory })) {
+          walk(_id, {
+            ids,
+            tree,
+            entryPointer,
+            parentPointer: pointer,
+            visitedTree
+          })
+        }
       }
+    } catch (e) {
+      console.error(e)
     }
   }
 }
@@ -140,20 +163,22 @@ module.exports = function graph (options = {}) {
 
       visitedTree[id] = []
 
+      const workingDirectory = id
       const ast = acorn.parse(fs.readFileSync(id, 'utf-8'), {
         ecmaVersion: 2015,
         sourceType: 'module'
       })
 
       for (const node of ast.body) {
-        walk(node, {
-          ids,
-          tree,
-          workingDirectory: path.dirname(id),
-          entryPointer: pointer,
-          parentPointer: pointer,
-          visitedTree
-        })
+        for (const _id of getFileIdsFromAstNode(node, { workingDirectory })) {
+          walk(_id, {
+            ids,
+            tree,
+            entryPointer: pointer,
+            parentPointer: pointer,
+            visitedTree
+          })
+        }
       }
     }
   }
