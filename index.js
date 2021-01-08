@@ -3,6 +3,7 @@ const path = require('path')
 const filewatcher = require('filewatcher')
 const debug = require('debug')('wdg')
 const acorn = require('acorn-loose')
+const walker = require('acorn-walk')
 const { createRequire } = require('module')
 
 function clearUp (ids, tree, parentPointers) {
@@ -38,17 +39,16 @@ function emitter () {
 function getFileIdsFromAstNode (node, { workingDirectory }) {
   const ids = []
 
-  if (node.type === 'ImportDeclaration') {
-    ids.push(node.source.value)
-  } else if (node.type === 'VariableDeclaration') {
-    for (const dec of node.declarations) {
-      if (dec.init.type === 'CallExpression') {
-        if (dec.init.callee.name === 'require') {
-          ids.push(dec.init.arguments[0].value)
-        }
+  walker.simple(node, {
+    ImportDeclaration (node) {
+      ids.push(node.source.value)
+    },
+    CallExpression (node) {
+      if (node.callee.name === 'require') {
+        ids.push(node.arguments[0].value)
       }
     }
-  }
+  })
 
   return ids
     .map(id => {

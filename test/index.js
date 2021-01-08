@@ -8,9 +8,9 @@ const graph = require('../')
 
 fixtures.setRoot(path.join(__dirname, 'fixtures'))
 
-process.chdir(fixtures.getRoot())
-
+fs.ensureDirSync(fixtures.getRoot())
 fs.emptyDirSync(fixtures.getRoot())
+process.chdir(fixtures.getRoot())
 
 const DELAY = 500
 
@@ -69,7 +69,7 @@ test('constructs valid tree', async () => {
       url: './valid/a.js',
       content: `
         import a_a from './a_a'
-        import a_b from './a_b'
+        const a_b = require('./a_b')
         export default ''
       `
     },
@@ -89,7 +89,7 @@ test('constructs valid tree', async () => {
     a_b: {
       url: './valid/a_b.js',
       content: `
-        export default ''
+        module.exports = ''
       `
     }
   }
