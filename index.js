@@ -98,7 +98,7 @@ function walk (id, context) {
 
   const parentLeaf = tree[ids[parentPointer]]
 
-  if (!parentLeaf.childrenPointers.includes(pointer))
+  if (!isEntry && !parentLeaf.childrenPointers.includes(pointer))
     parentLeaf.childrenPointers.push(pointer)
 
   if (!visitedLeaf.includes(id)) {
@@ -220,8 +220,6 @@ module.exports = function graph (options = {}) {
       debug('remove', file)
 
       const { pointer, entryPointers } = tree[file]
-
-      console.log(pointer, entryPointers)
 
       // is an entry itself
       if (entryPointers.includes(pointer)) {
