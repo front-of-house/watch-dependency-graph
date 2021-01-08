@@ -69,23 +69,29 @@ function getFileIdsFromAstNode (node, { workingDirectory }) {
 }
 
 function walk (id, context) {
-  const { ids, tree, entryPointer, parentPointer, visitedTree = {} } = context
+  let { ids, tree, entryPointer, parentPointer, visitedLeaf } = context
 
   if (!ids.includes(id)) ids.push(id)
 
   const pointer = ids.indexOf(id)
+  const isEntry = entryPointer === undefined
+
+  entryPointer = isEntry ? pointer : entryPointer
+  parentPointer = isEntry ? pointer : parentPointer
 
   if (!tree[id]) {
     tree[id] = {
       pointer,
       entryPointers: [entryPointer],
-      parentPointers: [parentPointer],
+      parentPointers: isEntry ? [] : [parentPointer],
       childrenPointers: []
     }
   } else {
     const leaf = tree[id]
+
     if (!leaf.entryPointers.includes(entryPointer))
       leaf.entryPointers.push(entryPointer)
+
     if (!leaf.parentPointers.includes(parentPointer))
       leaf.parentPointers.push(parentPointer)
   }
@@ -94,8 +100,6 @@ function walk (id, context) {
 
   if (!parentLeaf.childrenPointers.includes(pointer))
     parentLeaf.childrenPointers.push(pointer)
-
-  const visitedLeaf = visitedTree[ids[entryPointer]]
 
   if (!visitedLeaf.includes(id)) {
     visitedLeaf.push(id)
@@ -114,7 +118,7 @@ function walk (id, context) {
             tree,
             entryPointer,
             parentPointer: pointer,
-            visitedTree
+            visitedLeaf
           })
         }
       }
@@ -141,45 +145,16 @@ module.exports = function graph (options = {}) {
 
     ids = []
     tree = {}
-
     const visitedTree = {}
 
     for (const id of entries) {
-      if (!ids.includes(id)) ids.push(id)
+      const visitedLeaf = (visitedTree[id] = [])
 
-      const pointer = ids.indexOf(id)
-
-      if (!tree[id]) {
-        tree[id] = {
-          pointer,
-          entryPointers: [pointer],
-          parentPointers: [],
-          childrenPointers: []
-        }
-      } else {
-        if (!tree[id].entryPointers.includes(pointer))
-          tree[id].entryPointers.push(pointer)
-      }
-
-      visitedTree[id] = []
-
-      const workingDirectory = id
-      const ast = acorn.parse(fs.readFileSync(id, 'utf-8'), {
-        ecmaVersion: 2015,
-        sourceType: 'module'
+      walk(id, {
+        ids,
+        tree,
+        visitedLeaf
       })
-
-      for (const node of ast.body) {
-        for (const _id of getFileIdsFromAstNode(node, { workingDirectory })) {
-          walk(_id, {
-            ids,
-            tree,
-            entryPointer: pointer,
-            parentPointer: pointer,
-            visitedTree
-          })
-        }
-      }
     }
   }
 
@@ -245,6 +220,8 @@ module.exports = function graph (options = {}) {
       debug('remove', file)
 
       const { pointer, entryPointers } = tree[file]
+
+      console.log(pointer, entryPointers)
 
       // is an entry itself
       if (entryPointers.includes(pointer)) {
