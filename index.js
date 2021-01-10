@@ -1,3 +1,5 @@
+require('sucrase/register')
+
 const fs = require('fs')
 const path = require('path')
 const filewatcher = require('filewatcher')
@@ -5,6 +7,7 @@ const debug = require('debug')('wdg')
 const acorn = require('acorn-loose')
 const walker = require('acorn-walk')
 const { createRequire } = require('module')
+const sucrase = require('sucrase')
 
 function clearUp (ids, tree, parentPointers) {
   for (const p of parentPointers) {
@@ -36,7 +39,7 @@ function emitter () {
   }
 }
 
-function getFileIdsFromAstNode (node, { workingDirectory }) {
+function getFileIdsFromAstNode (node, { parentFileId }) {
   const ids = []
 
   walker.simple(node, {
@@ -52,12 +55,13 @@ function getFileIdsFromAstNode (node, { workingDirectory }) {
 
   return ids
     .map(id => {
-      const req = createRequire(workingDirectory)
+      const req = createRequire(parentFileId)
       let resolved
 
       try {
         resolved = req.resolve(id)
       } catch (e) {
+        // TODO support alias
         resolved = /^@/.test(id)
           ? req.resolve(path.join(process.cwd(), id.split('@')[1]))
           : require.resolve(id)
@@ -69,7 +73,7 @@ function getFileIdsFromAstNode (node, { workingDirectory }) {
 }
 
 function walk (id, context) {
-  let { ids, tree, entryPointer, parentPointer, visitedLeaf } = context
+  let { ids, tree, entryPointer, parentPointer, visitedLeaf, events } = context
 
   if (!ids.includes(id)) ids.push(id)
 
@@ -105,25 +109,40 @@ function walk (id, context) {
     visitedLeaf.push(id)
 
     try {
-      const ast = acorn.parse(fs.readFileSync(id, 'utf-8'), {
+      const raw = fs.readFileSync(id, 'utf-8')
+      const { code } = sucrase.transform(raw, {
+        // only transform typescript if it's a TS file
+        transforms: ['imports', 'jsx'].concat(
+          /^\.ts/.test(path.extname(id)) ? 'typescript' : []
+        ),
+        jsxPragma: 'h',
+        jsxFragmentPragma: 'h'
+      })
+      const ast = acorn.parse(code, {
         ecmaVersion: 2015,
         sourceType: 'module'
       })
-      const workingDirectory = id
 
       for (const node of ast.body) {
-        for (const _id of getFileIdsFromAstNode(node, { workingDirectory })) {
+        for (const _id of getFileIdsFromAstNode(node, { parentFileId: id })) {
           walk(_id, {
             ids,
             tree,
             entryPointer,
             parentPointer: pointer,
-            visitedLeaf
+            visitedLeaf,
+            events
           })
         }
       }
     } catch (e) {
-      console.error(e)
+      // overwrite to localize error
+      if (e instanceof SyntaxError) {
+        e = new SyntaxError(e.message, id, e.lineNumber)
+      }
+
+      events.emit('error', e)
+      if (!events.listeners('error').length) console.error(e)
     }
   }
 }
@@ -153,7 +172,8 @@ module.exports = function graph (options = {}) {
       walk(id, {
         ids,
         tree,
-        visitedLeaf
+        visitedLeaf,
+        events
       })
     }
   }

@@ -369,7 +369,7 @@ test('handles syntax error', async () => {
     a_b: {
       url: './syntax/a_b.js',
       content: `
-        export default () => <div />
+        export const fn () => {}
       `
     }
   }
@@ -396,25 +396,36 @@ test('supports other imports', async () => {
         import * as a_b from './a_b.js'
         import { a_c } from './a_c.js'
         const a_d = require('./a_d.js')
+
+        let lazy = null
+
+        if (true) lazy = import('./a_e.js')
+
         export default ''
       `
     },
     a_b: {
       url: './imports/a_b.js',
       content: `
-        export const a_b () => {}
+        export const a_b = () => {}
       `
     },
     a_c: {
       url: './imports/a_c.js',
       content: `
-        export const a_c () => {}
+        export const a_c = () => {}
       `
     },
     a_d: {
       url: './imports/a_d.js',
       content: `
         module.exports = { a_d() {} }
+      `
+    },
+    a_e: {
+      url: './imports/a_e.js',
+      content: `
+        export const a_e = () => {}
       `
     }
   }
@@ -430,37 +441,54 @@ test('supports other imports', async () => {
   assert(!!tree[fsx.files.a_b])
   assert(!!tree[fsx.files.a_c])
   assert(!!tree[fsx.files.a_d])
+  assert(!!tree[fsx.files.a_e])
 
   w.close()
   fsx.cleanup()
 })
 
-test('supports other extensions', async () => {
+test('supports other extensions/formats', async () => {
   const files = {
-    a: {
-      url: './extensions/a.js',
+    entry: {
+      url: './extensions/entry.js',
       content: `
-        import * as a_b from './a_b.ts'
+        import * as jsx from './jsx.jsx'
+        import * as ts from './ts.ts'
+        import * as tsx from './tsx.tsx'
         export default ''
       `
     },
-    a_b: {
-      url: './extensions/a_b.ts',
+    jsx: {
+      url: './extensions/jsx.jsx',
       content: `
-        export const a_b () => {}
+        export const fn = (prop) => <div />
+      `
+    },
+    ts: {
+      url: './extensions/ts.ts',
+      content: `
+        export const fn = (prop: str) => console.log(str)
+      `
+    },
+    tsx: {
+      url: './extensions/tsx.tsx',
+      content: `
+        export const fn = (props: any) => <div />
       `
     }
   }
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add([fsx.files.a])
+  w.add([fsx.files.entry])
 
   await wait(DELAY)
 
   const tree = w.tree
 
-  assert(!!tree[fsx.files.a_b])
+  assert(!!tree[fsx.files.jsx])
+  assert(!!tree[fsx.files.ts])
+  assert(!!tree[fsx.files.tsx])
 
   w.close()
   fsx.cleanup()
