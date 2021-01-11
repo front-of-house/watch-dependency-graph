@@ -108,12 +108,17 @@ function walk (id, context) {
   if (!visitedLeaf.includes(id)) {
     visitedLeaf.push(id)
 
+    const extension = path.extname(id)
+
+    // not a JS file
+    if (!/^\.(j|t)sx?$/.test(extension)) return
+
     try {
       const raw = fs.readFileSync(id, 'utf-8')
       const { code } = sucrase.transform(raw, {
         // only transform typescript if it's a TS file
         transforms: ['imports', 'jsx'].concat(
-          /^\.ts/.test(path.extname(id)) ? 'typescript' : []
+          /^\.ts/.test(extension) ? 'typescript' : []
         ),
         jsxPragma: 'h',
         jsxFragmentPragma: 'h'

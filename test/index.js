@@ -494,6 +494,37 @@ test('supports other extensions/formats', async () => {
   fsx.cleanup()
 })
 
+test('accepts but does not traverse non-js files', async () => {
+  const files = {
+    a: {
+      url: './non-js/a.js',
+      content: `
+        import pkg from './package.json'
+        export default ''
+      `
+    },
+    pkg: {
+      url: './non-js/package.json',
+      content: `
+        { "version": "1" }
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.pkg])
+
+  w.close()
+  fsx.cleanup()
+})
+
 test('supports node_modules', async () => {
   const files = {
     a: {
