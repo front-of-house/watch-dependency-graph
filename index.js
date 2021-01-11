@@ -9,6 +9,16 @@ const walker = require('acorn-walk')
 const { createRequire } = require('module')
 const sucrase = require('sucrase')
 
+function resolveAliases (id, alias) {
+  for (const a of Object.keys(alias)) {
+    if (id.indexOf(a) === 0) {
+      return path.join(alias[a], id.replace(a, ''))
+    }
+  }
+
+  return id
+}
+
 function clearUp (ids, tree, parentPointers) {
   for (const p of parentPointers) {
     const id = ids[p]
@@ -39,7 +49,7 @@ function emitter () {
   }
 }
 
-function getFileIdsFromAstNode (node, { parentFileId }) {
+function getFileIdsFromAstNode (node, { parentFileId, alias }) {
   const ids = []
 
   walker.simple(node, {
@@ -61,19 +71,25 @@ function getFileIdsFromAstNode (node, { parentFileId }) {
       try {
         resolved = req.resolve(id)
       } catch (e) {
-        // TODO support alias
-        resolved = /^@/.test(id)
-          ? req.resolve(path.join(process.cwd(), id.split('@')[1]))
-          : require.resolve(id)
+        resolved = req.resolve(resolveAliases(id, alias))
       }
 
+      // same same, must be built-in module
       return resolved === id ? undefined : resolved
     })
     .filter(Boolean)
 }
 
 function walk (id, context) {
-  let { ids, tree, entryPointer, parentPointer, visitedLeaf, events } = context
+  let {
+    ids,
+    tree,
+    entryPointer,
+    parentPointer,
+    visitedLeaf,
+    events,
+    alias
+  } = context
 
   if (!ids.includes(id)) ids.push(id)
 
@@ -129,14 +145,18 @@ function walk (id, context) {
       })
 
       for (const node of ast.body) {
-        for (const _id of getFileIdsFromAstNode(node, { parentFileId: id })) {
+        for (const _id of getFileIdsFromAstNode(node, {
+          parentFileId: id,
+          alias
+        })) {
           walk(_id, {
             ids,
             tree,
             entryPointer,
             parentPointer: pointer,
             visitedLeaf,
-            events
+            events,
+            alias
           })
         }
       }
@@ -152,8 +172,8 @@ function walk (id, context) {
   }
 }
 
-module.exports = function graph (options = {}) {
-  debug('initialized with', { options })
+module.exports = function graph ({ alias = {} } = {}) {
+  debug('initialized with', { alias })
 
   // once instance
   const events = emitter()
@@ -178,7 +198,8 @@ module.exports = function graph (options = {}) {
         ids,
         tree,
         visitedLeaf,
-        events
+        events,
+        alias
       })
     }
   }

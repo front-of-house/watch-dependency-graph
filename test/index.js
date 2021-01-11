@@ -326,7 +326,7 @@ test('correctly generates filepaths', async () => {
   fsx.cleanup()
 })
 
-test('support aliases error', async () => {
+test('support aliases', async () => {
   const files = {
     a: {
       url: './aliases/a.js',
@@ -344,7 +344,11 @@ test('support aliases error', async () => {
   }
 
   const fsx = fixtures.create(files)
-  const w = graph({ cwd: fixtures.getRoot() })
+  const w = graph({
+    alias: {
+      '@': fixtures.getRoot()
+    }
+  })
   w.add([fsx.files.a])
 
   await wait(DELAY)
@@ -376,6 +380,10 @@ test('handles syntax error', async () => {
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
+
+  // silence error
+  w.on('error', () => {})
+
   w.add([fsx.files.a])
 
   await wait(DELAY)
