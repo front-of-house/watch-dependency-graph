@@ -32,22 +32,17 @@
   },
   "homepage": "https://github.com/sure-thing/watch-dependency-graph#readme",
   "dependencies": {
-    "@arr/unique": "^1.0.1",
-    "acorn": "^8.0.4",
     "acorn-jsx": "^5.3.1",
     "acorn-loose": "^8.0.1",
     "acorn-walk": "^8.0.1",
     "debug": "^4.2.0",
     "filewatcher": "^3.0.1",
-    "module-alias": "^2.2.2",
-    "resolve": "^1.19.0",
     "sucrase": "^3.17.0"
   },
   "devDependencies": {
     "baretest": "^2.0.0",
     "commitizen": "^4.2.2",
     "cz-conventional-changelog": "^3.3.0",
-    "esm": "^3.2.25",
     "fs-extra": "^9.0.1",
     "husky": "^4.3.0",
     "nodemon": "^2.0.4",

@@ -2,11 +2,11 @@ require('sucrase/register')
 
 const fs = require('fs')
 const path = require('path')
-const filewatcher = require('filewatcher')
+const { createRequire } = require('module')
 const debug = require('debug')('wdg')
+const filewatcher = require('filewatcher')
 const acorn = require('acorn-loose')
 const walker = require('acorn-walk')
-const { createRequire } = require('module')
 const sucrase = require('sucrase')
 
 function emitter () {
