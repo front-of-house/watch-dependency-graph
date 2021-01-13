@@ -84,7 +84,11 @@ function getFileIdsFromAstNode (node, { parentFileId, alias }) {
       try {
         resolved = req.resolve(id)
       } catch (e) {
-        resolved = req.resolve(resolveAliases(id, alias))
+        try {
+          resolved = req.resolve(resolveAliases(id, alias))
+        } catch (e) {
+          resolved = require.resolve(id)
+        }
       }
 
       // same same, must be built-in module
@@ -199,6 +203,9 @@ function walk (id, context) {
         }
       }
     } catch (e) {
+      // if we can't resolve then we won't watch
+      if (e.message.includes('Cannot find module')) return
+
       // overwrite to localize error
       if (e instanceof SyntaxError) {
         e = new SyntaxError(e.message, id, e.lineNumber)
