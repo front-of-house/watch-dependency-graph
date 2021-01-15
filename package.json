@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node -r esm test",
-    "test:watch": "nodemon -i ./test/fixtures -r esm test",
+    "test": "node test",
+    "test:watch": "nodemon -i ./test/fixtures test",
     "format": "prettier-standard --format"
   },
   "husky": {
@@ -32,7 +32,11 @@
   },
   "homepage": "https://github.com/sure-thing/watch-dependency-graph#readme",
   "dependencies": {
-    "@arr/unique": "^1.0.1",
+    "@babel/core": "^7.12.10",
+    "@babel/preset-env": "^7.12.11",
+    "acorn-jsx": "^5.3.1",
+    "acorn-loose": "^8.0.1",
+    "acorn-walk": "^8.0.1",
     "debug": "^4.2.0",
     "filewatcher": "^3.0.1"
   },
@@ -40,7 +44,6 @@
     "baretest": "^2.0.0",
     "commitizen": "^4.2.2",
     "cz-conventional-changelog": "^3.3.0",
-    "esm": "^3.2.25",
     "fs-extra": "^9.0.1",
     "husky": "^4.3.0",
     "nodemon": "^2.0.4",

@@ -1,16 +1,18 @@
-import fs from 'fs-extra'
-import path from 'path'
-import assert from 'assert'
-import baretest from 'baretest'
+const fs = require('fs-extra')
+const path = require('path')
+const assert = require('assert')
+const test = require('baretest')('wdg')
 
-import * as fixtures from './fixtures.js'
-import graph from '../'
+const fixtures = require('./fixtures')
+const graph = require('../')
 
 fixtures.setRoot(path.join(__dirname, 'fixtures'))
 
-const DELAY = 500
+fs.ensureDirSync(fixtures.getRoot())
+fs.emptyDirSync(fixtures.getRoot())
+process.chdir(fixtures.getRoot())
 
-const test = baretest('wdg')
+const DELAY = 500
 
 const wait = t => new Promise(resolve => setTimeout(resolve, t))
 
@@ -67,7 +69,7 @@ test('constructs valid tree', async () => {
       url: './valid/a.js',
       content: `
         import a_a from './a_a'
-        import a_b from './a_b'
+        const a_b = require('./a_b')
         export default ''
       `
     },
@@ -87,7 +89,7 @@ test('constructs valid tree', async () => {
     a_b: {
       url: './valid/a_b.js',
       content: `
-        export default ''
+        module.exports = ''
       `
     }
   }
@@ -285,6 +287,233 @@ test('handles inverse tree', async () => {
   fsx.cleanup()
 })
 
+test('correctly generates filepaths', async () => {
+  const files = {
+    a: {
+      url: './filepaths/a.js',
+      content: `
+        import a_b from './lib/a_b.js'
+        export default ''
+      `
+    },
+    a_b: {
+      url: './filepaths/lib/a_b.js',
+      content: `
+        import a_b_a from '../util/a_b_a.js'
+        export default ''
+      `
+    },
+    a_b_a: {
+      url: './filepaths/util/a_b_a.js',
+      content: `
+        export default ''
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.a_b])
+  assert(!!tree[fsx.files.a_b_a])
+
+  w.close()
+  fsx.cleanup()
+})
+
+test('support aliases', async () => {
+  const files = {
+    a: {
+      url: './aliases/a.js',
+      content: `
+        import a_b from '@/aliases/a_b.js'
+        export default ''
+      `
+    },
+    a_b: {
+      url: './aliases/a_b.js',
+      content: `
+        export default () => {}
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({
+    alias: {
+      '@': fixtures.getRoot()
+    }
+  })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.a_b])
+
+  w.close()
+  fsx.cleanup()
+})
+
+test('handles syntax error', async () => {
+  const files = {
+    a: {
+      url: './syntax/a.js',
+      content: `
+        import a_b from './a_b.js'
+        export default ''
+      `
+    },
+    a_b: {
+      url: './syntax/a_b.js',
+      content: `
+        export const fn () => {}
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+
+  // silence error
+  w.on('error', () => {})
+
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.a_b])
+
+  w.close()
+  fsx.cleanup()
+})
+
+test('supports other imports', async () => {
+  const files = {
+    a: {
+      url: './imports/a.js',
+      content: `
+        import * as a_b from './a_b.js'
+        import { a_c } from './a_c.js'
+        const a_d = require('./a_d.js')
+
+        let lazy = null
+
+        if (true) lazy = import('./a_e.js')
+
+        export default ''
+      `
+    },
+    a_b: {
+      url: './imports/a_b.js',
+      content: `
+        export const a_b = () => {}
+      `
+    },
+    a_c: {
+      url: './imports/a_c.js',
+      content: `
+        export const a_c = () => {}
+      `
+    },
+    a_d: {
+      url: './imports/a_d.js',
+      content: `
+        module.exports = { a_d() {} }
+      `
+    },
+    a_e: {
+      url: './imports/a_e.js',
+      content: `
+        export const a_e = () => {}
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.a_b])
+  assert(!!tree[fsx.files.a_c])
+  assert(!!tree[fsx.files.a_d])
+  assert(!!tree[fsx.files.a_e])
+
+  w.close()
+  fsx.cleanup()
+})
+
+test('accepts but does not traverse non-js files', async () => {
+  const files = {
+    a: {
+      url: './non-js/a.js',
+      content: `
+        import pkg from './package.json'
+        export default ''
+      `
+    },
+    pkg: {
+      url: './non-js/package.json',
+      content: `
+        { "version": "1" }
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.pkg])
+
+  w.close()
+  fsx.cleanup()
+})
+
+test('supports node_modules', async () => {
+  const files = {
+    a: {
+      url: './node_modules/a.js',
+      content: `
+        const assert = require('assert')
+        const baretest = require('baretest')
+      `
+    }
+  }
+  require.resolve('assert')
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.a])
+  assert(!!tree[require.resolve('baretest')])
+  assert(!!tree[require.resolve('barecolor')])
+
+  w.close()
+  fsx.cleanup()
+})
+
 test('emits change when entry file is updated', async () => {
   const files = {
     a: {
@@ -305,7 +534,6 @@ test('emits change when entry file is updated', async () => {
   fs.outputFileSync(
     fsx.files.a,
     `
-      import a_a from './a_a.js'
       export default 'foo'
     `
   )
@@ -342,14 +570,9 @@ test('emits change when nested children are updated', async () => {
   }
 
   const fsx = fixtures.create(files)
-
-  await wait(DELAY)
-
   const w = graph({ cwd: fixtures.getRoot() })
   w.add(fsx.files.a)
   const event = subscribe('change', w)
-
-  await wait(DELAY)
 
   fs.outputFileSync(
     fsx.files.a_a,
