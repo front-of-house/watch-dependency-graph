@@ -455,53 +455,6 @@ test('supports other imports', async () => {
   fsx.cleanup()
 })
 
-test.skip('supports other extensions/formats', async () => {
-  const files = {
-    entry: {
-      url: './extensions/entry.js',
-      content: `
-        import * as jsx from './jsx.jsx'
-        import * as ts from './ts.ts'
-        import * as tsx from './tsx.tsx'
-        export default ''
-      `
-    },
-    jsx: {
-      url: './extensions/jsx.jsx',
-      content: `
-        export const fn = (prop) => <div />
-      `
-    },
-    ts: {
-      url: './extensions/ts.ts',
-      content: `
-        export const fn = (prop: str) => console.log(str)
-      `
-    },
-    tsx: {
-      url: './extensions/tsx.tsx',
-      content: `
-        export const fn = (props: any) => <div />
-      `
-    }
-  }
-
-  const fsx = fixtures.create(files)
-  const w = graph({ cwd: fixtures.getRoot() })
-  w.add([fsx.files.entry])
-
-  await wait(DELAY)
-
-  const tree = w.tree
-
-  assert(!!tree[fsx.files.jsx])
-  assert(!!tree[fsx.files.ts])
-  assert(!!tree[fsx.files.tsx])
-
-  w.close()
-  fsx.cleanup()
-})
-
 test('accepts but does not traverse non-js files', async () => {
   const files = {
     a: {
