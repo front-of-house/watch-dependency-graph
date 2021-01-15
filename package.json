@@ -32,12 +32,13 @@
   },
   "homepage": "https://github.com/sure-thing/watch-dependency-graph#readme",
   "dependencies": {
+    "@babel/core": "^7.12.10",
+    "@babel/preset-env": "^7.12.11",
     "acorn-jsx": "^5.3.1",
     "acorn-loose": "^8.0.1",
     "acorn-walk": "^8.0.1",
     "debug": "^4.2.0",
-    "filewatcher": "^3.0.1",
-    "sucrase": "^3.17.0"
+    "filewatcher": "^3.0.1"
   },
   "devDependencies": {
     "baretest": "^2.0.0",

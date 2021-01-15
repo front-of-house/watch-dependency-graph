@@ -1,5 +1,3 @@
-require('sucrase/register')
-
 const fs = require('fs')
 const path = require('path')
 const { createRequire } = require('module')
@@ -7,7 +5,7 @@ const debug = require('debug')('wdg')
 const filewatcher = require('filewatcher')
 const acorn = require('acorn-loose')
 const walker = require('acorn-walk')
-const sucrase = require('sucrase')
+const { transformSync } = require('@babel/core')
 
 function emitter () {
   let events = {}
@@ -169,13 +167,8 @@ function walk (id, context) {
 
     try {
       const raw = fs.readFileSync(id, 'utf-8')
-      const { code } = sucrase.transform(raw, {
-        // only transform typescript if it's a TS file
-        transforms: ['imports', 'jsx'].concat(
-          /^\.ts/.test(extension) ? 'typescript' : []
-        ),
-        jsxPragma: 'h', // TODO
-        jsxFragmentPragma: 'h'
+      const { code } = transformSync(raw, {
+        presets: [require.resolve('@babel/preset-env')]
       })
       const ast = acorn.parse(code, {
         ecmaVersion: 2015,
@@ -203,7 +196,9 @@ function walk (id, context) {
         }
       }
     } catch (e) {
-      // if we can't resolve then we won't watch
+      // on syntax errors, just watch file and exit walk
+      if (e instanceof SyntaxError) return
+      // if we can't resolve then we don't walk
       if (e.message.includes('Cannot find module')) return
 
       // overwrite to localize error

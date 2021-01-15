@@ -455,7 +455,7 @@ test('supports other imports', async () => {
   fsx.cleanup()
 })
 
-test('supports other extensions/formats', async () => {
+test.skip('supports other extensions/formats', async () => {
   const files = {
     entry: {
       url: './extensions/entry.js',
@@ -617,14 +617,9 @@ test('emits change when nested children are updated', async () => {
   }
 
   const fsx = fixtures.create(files)
-
-  await wait(DELAY)
-
   const w = graph({ cwd: fixtures.getRoot() })
   w.add(fsx.files.a)
   const event = subscribe('change', w)
-
-  await wait(DELAY)
 
   fs.outputFileSync(
     fsx.files.a_a,
