@@ -168,6 +168,7 @@ function walk (id, context) {
     try {
       const raw = fs.readFileSync(id, 'utf-8')
       const { code } = transformSync(raw, {
+        filename: id,
         presets: [require.resolve('@babel/preset-env')]
       })
       const ast = acorn.parse(code, {
