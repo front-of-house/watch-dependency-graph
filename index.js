@@ -3,9 +3,8 @@ const path = require('path')
 const { createRequire } = require('module')
 const debug = require('debug')('wdg')
 const filewatcher = require('filewatcher')
-const acorn = require('acorn-loose')
-const walker = require('acorn-walk')
-const { transformSync } = require('@babel/core')
+const parser = require('@babel/parser')
+const traverse = require('@babel/traverse').default
 
 function emitter () {
   let events = {}
@@ -167,36 +166,84 @@ function walk (id, context) {
 
     try {
       const raw = fs.readFileSync(id, 'utf-8')
-      const { code } = transformSync(raw, {
-        filename: id,
-        presets: [require.resolve('@babel/preset-env')]
+      const ast = parser.parse(raw, {
+        sourceType: 'module',
+        plugins: ['jsx', 'typescript', 'dynamicImport']
       })
-      const ast = acorn.parse(code, {
-        ecmaVersion: 2015,
-        sourceType: 'module'
+      const nextIds = []
+
+      traverse(ast, {
+        enter (path) {
+          if (path.node.type === 'CallExpression') {
+            const callee = path.get('callee')
+            const isDynamicImport = callee.isImport()
+            if (callee.isIdentifier({ name: 'require' }) || isDynamicImport) {
+              const arg = path.node.arguments[0]
+              if (arg.type === 'StringLiteral') {
+                nextIds.push(arg.value)
+              } else {
+                nextIds.push(src.slice(arg.start, arg.end))
+              }
+            }
+          } else if (
+            path.node.type === 'ImportDeclaration' ||
+            path.node.type === 'ExportNamedDeclaration' ||
+            path.node.type === 'ExportAllDeclaration'
+          ) {
+            const { source } = path.node
+            if (source && source.value) {
+              nextIds.push(source.value)
+            }
+          }
+        }
       })
 
-      for (const node of ast.body) {
-        // get deps of current file
-        const nextIds = getFileIdsFromAstNode(node, {
-          parentFileId: id,
+      const resolvedNextIds = nextIds
+        .map(moduleId => {
+          const req = createRequire(id)
+          let resolved
+
+          try {
+            resolved = req.resolve(moduleId)
+          } catch (e1) {
+            try {
+              resolved = req.resolve(resolveAliases(moduleId, alias))
+            } catch (e2) {
+              try {
+                resolved = require.resolve(moduleId)
+              } catch (e3) {
+                if (e1) {
+                  throw e1
+                }
+                if (e2) {
+                  throw e2
+                }
+                if (e3) {
+                  throw e3
+                }
+              }
+            }
+          }
+
+          // same same, must be built-in module
+          return resolved === moduleId ? undefined : resolved
+        })
+        .filter(Boolean)
+
+      // walk each dep
+      for (const _id of resolvedNextIds) {
+        walk(_id, {
+          ids,
+          tree,
+          entryPointer,
+          parentPointer: pointer,
+          visitedLeaf,
+          events,
           alias
         })
-
-        // walk each dep
-        for (const _id of nextIds) {
-          walk(_id, {
-            ids,
-            tree,
-            entryPointer,
-            parentPointer: pointer,
-            visitedLeaf,
-            events,
-            alias
-          })
-        }
       }
     } catch (e) {
+      debug('walk error', e)
       // on syntax errors, just watch file and exit walk
       if (e instanceof SyntaxError) return
       // if we can't resolve then we don't walk
@@ -282,6 +329,7 @@ module.exports = function graph ({ alias = {} } = {}) {
     const removedIds = prevIds.filter(id => !nextIds.includes(id))
 
     debug('diff', { addedIds, removedIds })
+    debug('tree', tree)
 
     for (const id of addedIds) {
       watcher.add(id)

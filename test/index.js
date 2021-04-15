@@ -843,6 +843,65 @@ test(`files removed from watching aren't watched`, async () => {
   fsx.cleanup()
 })
 
+test('all', async () => {
+  const files = {
+    a: {
+      url: './all/a.js',
+      content: `
+        import * as a_b from './a_b.js'
+        import { a_c } from './a_c.js'
+        const a_d = require('./a_d.js')
+
+        let lazy = null
+
+        if (true) lazy = import('./a_e.js')
+
+        export default ''
+      `
+    },
+    a_b: {
+      url: './all/a_b.js',
+      content: `
+        export const a_b = () => {}
+      `
+    },
+    a_c: {
+      url: './all/a_c.js',
+      content: `
+        export const a_c = () => {}
+      `
+    },
+    a_d: {
+      url: './all/a_d.js',
+      content: `
+        module.exports = { a_d() {} }
+      `
+    },
+    a_e: {
+      url: './all/a_e.js',
+      content: `
+        export const a_e = () => {}
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  w.add([fsx.files.a])
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(!!tree[fsx.files.a_b])
+  assert(!!tree[fsx.files.a_c])
+  assert(!!tree[fsx.files.a_d])
+  assert(!!tree[fsx.files.a_e])
+
+  w.close()
+  fsx.cleanup()
+})
+
 !(async function () {
   console.time('test')
   await test.run()
