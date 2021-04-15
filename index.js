@@ -57,209 +57,62 @@ function clearUp (ids, tree, parentPointers) {
 }
 
 /*
- * Walk AST node for imports/requires, then resolve those dependencies
+ * Read file, parse, traverse, resolve children modules IDs
  */
-function getFileIdsFromAstNode (node, { parentFileId, alias }) {
-  const ids = []
+function getChildrenModuleIds ({ id, alias }) {
+  const raw = fs.readFileSync(id, 'utf-8')
+  const ast = parser.parse(raw, {
+    sourceType: 'module',
+    plugins: ['jsx', 'typescript', 'dynamicImport']
+  })
 
-  walker.simple(node, {
-    ImportDeclaration (node) {
-      ids.push(node.source.value)
-    },
-    CallExpression (node) {
-      if (node.callee.name === 'require') {
-        ids.push(node.arguments[0].value)
+  const children = []
+
+  traverse(ast, {
+    enter (path) {
+      if (path.node.type === 'CallExpression') {
+        const callee = path.get('callee')
+        const isDynamicImport = callee.isImport()
+        if (callee.isIdentifier({ name: 'require' }) || isDynamicImport) {
+          const arg = path.node.arguments[0]
+          if (arg.type === 'StringLiteral') {
+            children.push(arg.value)
+          } else {
+            children.push(src.slice(arg.start, arg.end))
+          }
+        }
+      } else if (
+        path.node.type === 'ImportDeclaration' ||
+        path.node.type === 'ExportNamedDeclaration' ||
+        path.node.type === 'ExportAllDeclaration'
+      ) {
+        const { source } = path.node
+        if (source && source.value) {
+          children.push(source.value)
+        }
       }
     }
   })
 
-  return ids
-    .map(id => {
-      const req = createRequire(parentFileId)
+  return children
+    .map(moduleId => {
+      const req = createRequire(id)
       let resolved
 
       try {
-        resolved = req.resolve(id)
-      } catch (e) {
+        resolved = req.resolve(moduleId)
+      } catch (e1) {
         try {
-          resolved = req.resolve(resolveAliases(id, alias))
-        } catch (e) {
-          resolved = require.resolve(id)
+          resolved = req.resolve(resolveAliases(moduleId, alias))
+        } catch (e2) {
+          resolved = require.resolve(moduleId)
         }
       }
 
       // same same, must be built-in module
-      return resolved === id ? undefined : resolved
+      return resolved === moduleId ? undefined : resolved
     })
     .filter(Boolean)
-}
-
-/*
- * Walk an entry file, creating trees and leafs as needed. If the file has
- * deps, find those and walk them too
- */
-function walk (id, context) {
-  let {
-    ids,
-    tree,
-    entryPointer,
-    parentPointer,
-    visitedLeaf,
-    events,
-    alias
-  } = context
-
-  /*
-   * Some files may be included by multiple entries, and ids[] should be a
-   * unique array
-   */
-  if (!ids.includes(id)) ids.push(id)
-
-  const pointer = ids.indexOf(id)
-
-  // on first call of walk with a fresh entry
-  const isEntry = entryPointer === undefined
-  // if this is an entry, it should be self referential
-  entryPointer = isEntry ? pointer : entryPointer
-  // if this is an entry, set up the parentPointer for the next walk
-  parentPointer = isEntry ? pointer : parentPointer
-
-  if (!tree[id]) {
-    tree[id] = {
-      pointer,
-      entryPointers: [entryPointer],
-      // entry has no parent
-      parentPointers: isEntry ? [] : [parentPointer],
-      childrenPointers: []
-    }
-  } else {
-    const leaf = tree[id]
-
-    /*
-     * On deeper walks, push entry and parent pointers to leaf
-     */
-
-    if (!leaf.entryPointers.includes(entryPointer))
-      leaf.entryPointers.push(entryPointer)
-
-    if (!leaf.parentPointers.includes(parentPointer))
-      leaf.parentPointers.push(parentPointer)
-  }
-
-  /*
-   * Push current child to its parent, if not an entry (no parent)
-   */
-  if (!isEntry) {
-    const parentLeaf = tree[ids[parentPointer]]
-    if (!parentLeaf.childrenPointers.includes(pointer))
-      parentLeaf.childrenPointers.push(pointer)
-  }
-
-  if (!visitedLeaf.includes(id)) {
-    // note that we've visited this ID while walking the current entry
-    visitedLeaf.push(id)
-
-    const extension = path.extname(id)
-
-    // don't walk non-js files
-    if (!/^\.(j|t)sx?$/.test(extension)) return
-
-    try {
-      const raw = fs.readFileSync(id, 'utf-8')
-      const ast = parser.parse(raw, {
-        sourceType: 'module',
-        plugins: ['jsx', 'typescript', 'dynamicImport']
-      })
-      const nextIds = []
-
-      traverse(ast, {
-        enter (path) {
-          if (path.node.type === 'CallExpression') {
-            const callee = path.get('callee')
-            const isDynamicImport = callee.isImport()
-            if (callee.isIdentifier({ name: 'require' }) || isDynamicImport) {
-              const arg = path.node.arguments[0]
-              if (arg.type === 'StringLiteral') {
-                nextIds.push(arg.value)
-              } else {
-                nextIds.push(src.slice(arg.start, arg.end))
-              }
-            }
-          } else if (
-            path.node.type === 'ImportDeclaration' ||
-            path.node.type === 'ExportNamedDeclaration' ||
-            path.node.type === 'ExportAllDeclaration'
-          ) {
-            const { source } = path.node
-            if (source && source.value) {
-              nextIds.push(source.value)
-            }
-          }
-        }
-      })
-
-      const resolvedNextIds = nextIds
-        .map(moduleId => {
-          const req = createRequire(id)
-          let resolved
-
-          try {
-            resolved = req.resolve(moduleId)
-          } catch (e1) {
-            try {
-              resolved = req.resolve(resolveAliases(moduleId, alias))
-            } catch (e2) {
-              try {
-                resolved = require.resolve(moduleId)
-              } catch (e3) {
-                if (e1) {
-                  throw e1
-                }
-                if (e2) {
-                  throw e2
-                }
-                if (e3) {
-                  throw e3
-                }
-              }
-            }
-          }
-
-          // same same, must be built-in module
-          return resolved === moduleId ? undefined : resolved
-        })
-        .filter(Boolean)
-
-      // walk each dep
-      for (const _id of resolvedNextIds) {
-        walk(_id, {
-          ids,
-          tree,
-          entryPointer,
-          parentPointer: pointer,
-          visitedLeaf,
-          events,
-          alias
-        })
-      }
-    } catch (e) {
-      debug('walk error', e)
-      // on syntax errors, just watch file and exit walk
-      if (e instanceof SyntaxError) return
-      // if we can't resolve then we don't walk
-      if (e.message.includes('Cannot find module')) return
-
-      // overwrite to localize error
-      if (e instanceof SyntaxError) {
-        e = new SyntaxError(e.message, id, e.lineNumber)
-      }
-
-      events.emit('error', e)
-
-      // if no error handler is configured, just stderr it
-      if (!events.listeners('error').length) console.error(e)
-    }
-  }
 }
 
 module.exports = function graph ({ alias = {} } = {}) {
@@ -268,75 +121,153 @@ module.exports = function graph ({ alias = {} } = {}) {
   // once instance
   const events = emitter()
 
-  // all generated from factory
-  let ids = []
-  let tree = {}
-  let watcher
-  let entries = []
+  let ids = [] // list of all file IDs
+  let tree = {} // graph of modules
+  const watcher = filewatcher() // filewatcher instance
+  let entryIds = [] // top level entry files
 
+  /**
+   * Clean tree by module ID, removing leafs and unwatching if de-referenced
+   */
   function cleanById (id) {
+    // target leaf
     const { pointer, parentPointers, childrenPointers } = tree[id]
 
-    delete tree[id]
-
+    // de-reference this module from its parents
     for (const p of parentPointers) {
       const children = tree[ids[p]].childrenPointers
       children.splice(children.indexOf(pointer), 1)
     }
 
     for (const p of childrenPointers) {
+      // de-reference this module from its children
       const parents = tree[ids[p]].parentPointers
       parents.splice(parents.indexOf(pointer), 1)
+
+      // de-reference this module from its entries
+      const entries = tree[ids[p]].entryPointers
+      if (entries.includes(pointer)) {
+        entries.splice(entries.indexOf(pointer), 1)
+      }
+
+      // if no longer referenced, clean again
+      if (entries.length === 0 || parents.length === 0) {
+        cleanById(ids[p])
+      }
     }
 
-    ids.splice(pointer, 1)
-
+    // delete target leaf and unwatch, DO THIS LAST
+    delete tree[id]
     watcher.remove(id)
   }
 
-  /**
-   * Diff and update watch
+  /*
+   * Walk a file, creating trees and leafs as needed. If the file has
+   * deps, find those and walk them too.
+   *
+   * Also used to walk a leaf directly, in which case bootstrapping will be false
    */
-  function bootstrap () {
-    debug('bootstrap', entries)
+  function walk (id, context) {
+    let { entryPointer, parentPointer, visitedIds, bootstrapping } = context
 
-    const prevIds = ids // save for diff
+    // on first call of walk with a fresh entry
+    const isEntry = entryPointer === undefined
+    // non-js files can be indexed by not walked
+    const isTraversable = /^\.(j|t)sx?$/.test(path.extname(id))
 
-    ids = [] // reset
-    tree = {} // reset
+    // ignore any IDs that we've already walked from a given entrypoint
+    if (!visitedIds.includes(id)) {
+      // note that we've visited this ID while walking the current entry
+      visitedIds.push(id)
 
-    const visitedTree = {} // new on each walk
-
-    // walk each entry
-    for (const id of entries) {
-      const visitedLeaf = (visitedTree[id] = [])
-
-      walk(id, {
-        ids,
-        tree,
-        visitedLeaf,
-        events,
-        alias
-      })
-    }
-
-    /*
-     * Diff and add/remove from watch
-     */
-
-    const nextIds = ids
-    const addedIds = nextIds.filter(id => !prevIds.includes(id))
-    const removedIds = prevIds.filter(id => !nextIds.includes(id))
-
-    debug('diff', { addedIds, removedIds })
-    debug('tree', tree)
-
-    for (const id of addedIds) {
+      // watch any file we pass to watch, even if we can't traverse it
       watcher.add(id)
-    }
 
-    for (const id of removedIds) {
-      watcher.remove(id)
+      // IDs should be unique
+      if (!ids.includes(id)) ids.push(id)
+
+      // current file
+      const pointer = ids.indexOf(id)
+
+      // if this is an entry, it should be self referential
+      entryPointer = isEntry ? pointer : entryPointer
+      // if this is an entry, set up the parentPointer for the next walk
+      parentPointer = isEntry ? pointer : parentPointer
+
+      // create tree leaf if not exists
+      if (!tree[id]) {
+        tree[id] = {
+          pointer,
+          entryPointers: [entryPointer],
+          // entry has no parent
+          parentPointers: isEntry ? [] : [parentPointer],
+          childrenPointers: []
+        }
+      }
+
+      // reference our new or old leaf, and its parent
+      const leaf = tree[id]
+      const parentLeaf = tree[ids[parentPointer]]
+
+      // every leaf should point back to the entry that kicked it off
+      if (!leaf.entryPointers.includes(entryPointer))
+        leaf.entryPointers.push(entryPointer)
+
+      if (!isEntry) {
+        /*
+         * Push parent pointer, if not an entry (no parent)
+         */
+        if (!leaf.parentPointers.includes(parentPointer))
+          leaf.parentPointers.push(parentPointer)
+
+        /*
+         * Push current child to its parent, if not an entry (no parent)
+         */
+        if (!parentLeaf.childrenPointers.includes(pointer))
+          parentLeaf.childrenPointers.push(pointer)
+      }
+
+      // if not walkable, we've done as much as we can
+      if (!isTraversable) return
+
+      try {
+        const childModuleIds = isTraversable
+          ? getChildrenModuleIds({ id, alias })
+          : []
+
+        // if this isn't the first time we've traversed this leaf, check for any removed modules
+        if (!bootstrapping) {
+          for (const _pointer of leaf.childrenPointers) {
+            if (!childModuleIds.includes(ids[_pointer])) {
+              cleanById(ids[_pointer])
+            }
+          }
+        }
+
+        // walk each child module if it hasn't already been done
+        for (const _id of childModuleIds) {
+          if (!parentLeaf.childrenPointers.includes(ids.indexOf(_id))) {
+            walk(_id, {
+              entryPointer,
+              parentPointer: pointer,
+              visitedIds,
+              bootstrapping
+            })
+          }
+        }
+      } catch (e) {
+        debug('walk error', e)
+
+        // overwrite to localize error
+        if (e instanceof SyntaxError) {
+          e = new SyntaxError(e.message, id, e.lineNumber)
+        }
+
+        // if no error handler is configured, just stderr it
+        if (!events.listeners('error').length) console.error(e)
+
+        events.emit('error', e)
+      }
     }
   }
 
@@ -346,13 +277,16 @@ module.exports = function graph ({ alias = {} } = {}) {
     // bust cache for all involved files up the tree
     clearUp(ids, tree, [ids.indexOf(file)])
 
-    // only emit which entries changed
+    // only emit which entryIds changed
     events.emit(
       'change',
       entryPointers.map(p => ids[p]) // TODO pass source file
     )
   }
 
+  /**
+   * Validates that entry filepaths are absolute and notifies the user if they are not
+   */
   function isAbsoluteFilepath (id) {
     const isAbs = path.isAbsolute(id)
 
@@ -370,22 +304,24 @@ module.exports = function graph ({ alias = {} } = {}) {
     return isAbs
   }
 
-  watcher = filewatcher() // single watcher
-
+  /**
+   * Main handler
+   */
   watcher.on('change', async (file, stat) => {
+    const { pointer, entryPointers } = tree[file]
+    const isEntry = entryPointers.includes(pointer)
+
     if (stat.deleted) {
       debug('remove', file)
 
-      const { pointer, entryPointers } = tree[file]
-
       // is an entry itself (self-referential)
-      if (entryPointers.includes(pointer)) {
+      if (isEntry) {
         // only emit if an entry is removed
         events.emit('remove', [ids[pointer]])
 
-        entries.splice(ids[pointer], 1)
+        entryIds.splice(ids[pointer], 1)
 
-        bootstrap() // restart
+        cleanById(file) // remove any references to removed file
       } else {
         handleChange(file)
 
@@ -396,7 +332,12 @@ module.exports = function graph ({ alias = {} } = {}) {
 
       handleChange(file)
 
-      bootstrap() // restart
+      // fabricate entry/parent pointers if we're jumping into a leaf and not an entry
+      walk(file, {
+        visitedIds: [],
+        entryPointer: isEntry ? undefined : tree[file].entryPointers[0],
+        parentPointer: isEntry ? undefined : tree[file].parentPointers[0]
+      })
     }
   })
 
@@ -418,14 +359,22 @@ module.exports = function graph ({ alias = {} } = {}) {
     add (files) {
       files = [].concat(files).filter(entry => {
         // filter out any already watched files
-        if (entries.includes(entry)) return false
+        if (entryIds.includes(entry)) return false
 
         return isAbsoluteFilepath(entry)
       })
 
-      entries.push(...files)
+      events.emit('add', files)
 
-      bootstrap()
+      entryIds.push(...files)
+
+      // walk each entry
+      for (const id of entryIds) {
+        walk(id, {
+          visitedIds: [],
+          bootstrapping: true
+        })
+      }
     },
     remove (files) {
       files = [].concat(files).filter(isAbsoluteFilepath)
@@ -433,8 +382,11 @@ module.exports = function graph ({ alias = {} } = {}) {
       events.emit('remove', files)
 
       for (const file of files) {
-        if (entries.includes(file)) entries.splice(file, 1)
-        bootstrap() // just restart here, let diff remove tree
+        if (entryIds.includes(file)) {
+          entryIds.splice(entryIds.indexOf(file), 1)
+
+          cleanById(file)
+        }
       }
     }
   }
