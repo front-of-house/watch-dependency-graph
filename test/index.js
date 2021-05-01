@@ -53,7 +53,7 @@ test('ignores non-absolute paths', async () => {
 
   const event = subscribe('error', w)
 
-  w.add('./isAbs/a.js')
+  await w.add('./isAbs/a.js')
 
   const error = await event
 
@@ -69,7 +69,7 @@ test('constructs valid tree', async () => {
       url: './valid/a.js',
       content: `
         import a_a from './a_a'
-        const a_b = require('./a_b')
+        import a_b from './a_b'
         export default ''
       `
     },
@@ -89,14 +89,14 @@ test('constructs valid tree', async () => {
     a_b: {
       url: './valid/a_b.js',
       content: `
-        module.exports = ''
+        export default ''
       `
     }
   }
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add(fsx.files.a)
+  await w.add(fsx.files.a)
 
   await wait(DELAY)
 
@@ -153,7 +153,7 @@ test('constructs valid tree in inverse alpha/write order', async () => {
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add(fsx.files.b)
+  await w.add(fsx.files.b)
 
   await wait(DELAY)
 
@@ -192,7 +192,7 @@ test('handles shared deps', async () => {
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add([fsx.files.a, fsx.files.b])
+  await w.add([fsx.files.a, fsx.files.b])
 
   await wait(DELAY)
 
@@ -228,7 +228,7 @@ test('handles circular deps', async () => {
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add([fsx.files.a, fsx.files.b])
+  await w.add([fsx.files.a, fsx.files.b])
 
   await wait(DELAY)
 
@@ -274,7 +274,7 @@ test('handles inverse tree', async () => {
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add([fsx.files.a, fsx.files.b])
+  await w.add([fsx.files.a, fsx.files.b])
 
   await wait(DELAY)
 
@@ -313,7 +313,7 @@ test('correctly generates filepaths', async () => {
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add([fsx.files.a])
+  await w.add([fsx.files.a])
 
   await wait(DELAY)
 
@@ -349,7 +349,7 @@ test('support aliases', async () => {
       '@': fixtures.getRoot()
     }
   })
-  w.add([fsx.files.a])
+  await w.add([fsx.files.a])
 
   await wait(DELAY)
 
@@ -384,72 +384,13 @@ test('handles syntax error', async () => {
   // silence error
   w.on('error', () => {})
 
-  w.add([fsx.files.a])
+  await w.add([fsx.files.a])
 
   await wait(DELAY)
 
   const tree = w.tree
 
   assert(!!tree[fsx.files.a_b])
-
-  w.close()
-  fsx.cleanup()
-})
-
-test('supports other imports', async () => {
-  const files = {
-    a: {
-      url: './imports/a.js',
-      content: `
-        import * as a_b from './a_b.js'
-        import { a_c } from './a_c.js'
-        const a_d = require('./a_d.js')
-
-        let lazy = null
-
-        if (true) lazy = import('./a_e.js')
-
-        export default ''
-      `
-    },
-    a_b: {
-      url: './imports/a_b.js',
-      content: `
-        export const a_b = () => {}
-      `
-    },
-    a_c: {
-      url: './imports/a_c.js',
-      content: `
-        export const a_c = () => {}
-      `
-    },
-    a_d: {
-      url: './imports/a_d.js',
-      content: `
-        module.exports = { a_d() {} }
-      `
-    },
-    a_e: {
-      url: './imports/a_e.js',
-      content: `
-        export const a_e = () => {}
-      `
-    }
-  }
-
-  const fsx = fixtures.create(files)
-  const w = graph({ cwd: fixtures.getRoot() })
-  w.add([fsx.files.a])
-
-  await wait(DELAY)
-
-  const tree = w.tree
-
-  assert(!!tree[fsx.files.a_b])
-  assert(!!tree[fsx.files.a_c])
-  assert(!!tree[fsx.files.a_d])
-  assert(!!tree[fsx.files.a_e])
 
   w.close()
   fsx.cleanup()
@@ -474,7 +415,7 @@ test('accepts but does not traverse non-js files', async () => {
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add([fsx.files.a])
+  await w.add([fsx.files.a])
 
   await wait(DELAY)
 
@@ -491,16 +432,15 @@ test('supports node_modules', async () => {
     a: {
       url: './node_modules/a.js',
       content: `
-        const assert = require('assert')
-        const baretest = require('baretest')
+        import assert from 'barecolor'
+        import baretest from 'baretest'
       `
     }
   }
-  require.resolve('assert')
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add([fsx.files.a])
+  await w.add([fsx.files.a])
 
   await wait(DELAY)
 
@@ -526,7 +466,7 @@ test('emits change when entry file is updated', async () => {
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add(fsx.files.a)
+  await w.add(fsx.files.a)
   const event = subscribe('change', w)
 
   await wait(DELAY)
@@ -571,7 +511,7 @@ test('emits change when nested children are updated', async () => {
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add(fsx.files.a)
+  await w.add(fsx.files.a)
   const event = subscribe('change', w)
 
   fs.outputFileSync(
@@ -627,7 +567,7 @@ test('de-referenced nested child is ignored, then re-added', async () => {
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add(fsx.files.a)
+  await w.add(fsx.files.a)
 
   await wait(DELAY)
 
@@ -688,7 +628,7 @@ test('emits remove event when entry file is removed', async () => {
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add(fsx.files.a)
+  await w.add(fsx.files.a)
   const event = subscribe('remove', w)
 
   await wait(DELAY)
@@ -721,7 +661,7 @@ test(`when entry file is removed, its children are removed too and don't trigger
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add(fsx.files.a)
+  await w.add(fsx.files.a)
   const event = subscribe('change', w)
 
   await wait(DELAY)
@@ -766,7 +706,7 @@ test(`when child file is removed, triggers update and references are removed`, a
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add(fsx.files.a)
+  await w.add(fsx.files.a)
   const event = subscribe('change', w)
 
   await wait(DELAY)
@@ -804,8 +744,8 @@ test(`files removed from watching aren't watched`, async () => {
   const w = graph({ cwd: fixtures.getRoot() })
   const event = subscribe('change', w)
 
-  w.add(fsx.files.a)
-  w.add(fsx.files.b)
+  await w.add(fsx.files.a)
+  await w.add(fsx.files.b)
 
   await wait(DELAY)
 
@@ -850,7 +790,7 @@ test('all', async () => {
       content: `
         import * as a_b from './a_b.js'
         import { a_c } from './a_c.js'
-        const a_d = require('./a_d.js')
+        import a_d from './a_d.js'
 
         let lazy = null
 
@@ -874,7 +814,7 @@ test('all', async () => {
     a_d: {
       url: './all/a_d.js',
       content: `
-        module.exports = { a_d() {} }
+        export default { a_d() {} }
       `
     },
     a_e: {
@@ -887,7 +827,7 @@ test('all', async () => {
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  w.add([fsx.files.a])
+  await w.add([fsx.files.a])
 
   await wait(DELAY)
 
