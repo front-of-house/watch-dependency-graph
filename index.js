@@ -3,8 +3,11 @@ const path = require('path')
 const { createRequire } = require('module')
 const debug = require('debug')('wdg')
 const filewatcher = require('filewatcher')
-const parser = require('@babel/parser')
-const traverse = require('@babel/traverse').default
+const { parse } = require('es-module-lexer')
+const stripComments = require('strip-comments')
+
+const ESM_IMPORT_REGEX = /(?<![^;\n])[ ]*import(?:["'\s]*([\w*${}\n\r\t, ]+)\s*from\s*)?\s*["'](.*?)["']/gm
+const ESM_DYNAMIC_IMPORT_REGEX = /(?<!\.)\bimport\((?:['"].+['"]|`[^$]+`)\)/gm
 
 function emitter () {
   let events = {}
@@ -56,43 +59,38 @@ function clearUp (ids, tree, parentPointers) {
   }
 }
 
+/**
+ * Lifted from snowpack, props to their team
+ *
+ * @see https://github.com/snowpackjs/snowpack/blob/f75de1375fe14155674112d88bf211ca3721ac7c/snowpack/src/scan-imports.ts#L119
+ */
+function cleanCodeForParsing (code) {
+  code = stripComments(code)
+  const allMatches = []
+  let match
+  const importRegex = new RegExp(ESM_IMPORT_REGEX)
+  while ((match = importRegex.exec(code))) {
+    allMatches.push(match)
+  }
+  const dynamicImportRegex = new RegExp(ESM_DYNAMIC_IMPORT_REGEX)
+  while ((match = dynamicImportRegex.exec(code))) {
+    allMatches.push(match)
+  }
+  return allMatches.map(([full]) => full).join('\n')
+}
+
 /*
  * Read file, parse, traverse, resolve children modules IDs
  */
-function getChildrenModuleIds ({ id, alias }) {
+async function getChildrenModuleIds ({ id, alias }) {
   const raw = fs.readFileSync(id, 'utf-8')
-  const ast = parser.parse(raw, {
-    sourceType: 'module',
-    plugins: ['jsx', 'typescript', 'dynamicImport']
-  })
+  let children = []
 
-  const children = []
-
-  traverse(ast, {
-    enter (path) {
-      if (path.node.type === 'CallExpression') {
-        const callee = path.get('callee')
-        const isDynamicImport = callee.isImport()
-        if (callee.isIdentifier({ name: 'require' }) || isDynamicImport) {
-          const arg = path.node.arguments[0]
-          if (arg.type === 'StringLiteral') {
-            children.push(arg.value)
-          } else {
-            children.push(src.slice(arg.start, arg.end))
-          }
-        }
-      } else if (
-        path.node.type === 'ImportDeclaration' ||
-        path.node.type === 'ExportNamedDeclaration' ||
-        path.node.type === 'ExportAllDeclaration'
-      ) {
-        const { source } = path.node
-        if (source && source.value) {
-          children.push(source.value)
-        }
-      }
-    }
-  })
+  try {
+    children = (await parse(raw))[0].map(i => i.n)
+  } catch (e) {
+    children = (await parse(cleanCodeForParsing(raw)))[0].map(i => i.n)
+  }
 
   return children
     .map(moduleId => {
@@ -167,7 +165,7 @@ module.exports = function graph ({ alias = {} } = {}) {
    *
    * Also used to walk a leaf directly, in which case bootstrapping will be false
    */
-  function walk (id, context) {
+  async function walk (id, context) {
     let { entryPointer, parentPointer, visitedIds, bootstrapping } = context
 
     // on first call of walk with a fresh entry
@@ -232,7 +230,7 @@ module.exports = function graph ({ alias = {} } = {}) {
 
       try {
         const childModuleIds = isTraversable
-          ? getChildrenModuleIds({ id, alias })
+          ? await getChildrenModuleIds({ id, alias })
           : []
 
         // if this isn't the first time we've traversed this leaf, check for any removed modules
@@ -247,7 +245,7 @@ module.exports = function graph ({ alias = {} } = {}) {
         // walk each child module if it hasn't already been done
         for (const _id of childModuleIds) {
           if (!parentLeaf.childrenPointers.includes(ids.indexOf(_id))) {
-            walk(_id, {
+            await walk(_id, {
               entryPointer,
               parentPointer: pointer,
               visitedIds,
@@ -333,7 +331,7 @@ module.exports = function graph ({ alias = {} } = {}) {
       handleChange(file)
 
       // fabricate entry/parent pointers if we're jumping into a leaf and not an entry
-      walk(file, {
+      await walk(file, {
         visitedIds: [],
         entryPointer: isEntry ? undefined : tree[file].entryPointers[0],
         parentPointer: isEntry ? undefined : tree[file].parentPointers[0]
@@ -356,7 +354,7 @@ module.exports = function graph ({ alias = {} } = {}) {
       watcher.removeAll()
       watcher.removeAllListeners()
     },
-    add (files) {
+    async add (files) {
       files = [].concat(files).filter(entry => {
         // filter out any already watched files
         if (entryIds.includes(entry)) return false
@@ -370,7 +368,7 @@ module.exports = function graph ({ alias = {} } = {}) {
 
       // walk each entry
       for (const id of entryIds) {
-        walk(id, {
+        await walk(id, {
           visitedIds: [],
           bootstrapping: true
         })

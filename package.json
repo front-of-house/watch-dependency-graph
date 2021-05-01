@@ -32,10 +32,10 @@
   },
   "homepage": "https://github.com/sure-thing/watch-dependency-graph#readme",
   "dependencies": {
-    "@babel/parser": "^7.13.15",
-    "@babel/traverse": "^7.13.15",
     "debug": "^4.2.0",
-    "filewatcher": "^3.0.1"
+    "es-module-lexer": "^0.4.1",
+    "filewatcher": "^3.0.1",
+    "strip-comments": "^2.0.1"
   },
   "devDependencies": {
     "baretest": "^2.0.0",
