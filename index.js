@@ -4,6 +4,10 @@ const { createRequire } = require('module')
 const debug = require('debug')('wdg')
 const filewatcher = require('filewatcher')
 const { parse } = require('es-module-lexer')
+const stripComments = require('strip-comments')
+
+const ESM_IMPORT_REGEX = /(?<![^;\n])[ ]*import(?:["'\s]*([\w*${}\n\r\t, ]+)\s*from\s*)?\s*["'](.*?)["']/gm
+const ESM_DYNAMIC_IMPORT_REGEX = /(?<!\.)\bimport\((?:['"].+['"]|`[^$]+`)\)/gm
 
 function emitter () {
   let events = {}
@@ -55,13 +59,38 @@ function clearUp (ids, tree, parentPointers) {
   }
 }
 
+/**
+ * Lifted from snowpack, props to their team
+ *
+ * @see https://github.com/snowpackjs/snowpack/blob/f75de1375fe14155674112d88bf211ca3721ac7c/snowpack/src/scan-imports.ts#L119
+ */
+function cleanCodeForParsing (code) {
+  code = stripComments(code)
+  const allMatches = []
+  let match
+  const importRegex = new RegExp(ESM_IMPORT_REGEX)
+  while ((match = importRegex.exec(code))) {
+    allMatches.push(match)
+  }
+  const dynamicImportRegex = new RegExp(ESM_DYNAMIC_IMPORT_REGEX)
+  while ((match = dynamicImportRegex.exec(code))) {
+    allMatches.push(match)
+  }
+  return allMatches.map(([full]) => full).join('\n')
+}
+
 /*
  * Read file, parse, traverse, resolve children modules IDs
  */
 async function getChildrenModuleIds ({ id, alias }) {
   const raw = fs.readFileSync(id, 'utf-8')
-  const [imports] = await parse(raw)
-  const children = imports.map(i => i.n)
+  let children = []
+
+  try {
+    children = (await parse(raw))[0].map(i => i.n)
+  } catch (e) {
+    children = (await parse(cleanCodeForParsing(raw)))[0].map(i => i.n)
+  }
 
   return children
     .map(moduleId => {

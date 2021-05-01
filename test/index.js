@@ -166,6 +166,38 @@ test('constructs valid tree in inverse alpha/write order', async () => {
   fsx.cleanup()
 })
 
+test('supports jsx', async () => {
+  const files = {
+    a: {
+      url: './jsx/a.js',
+      content: `
+        import b from './b.js'
+        export default () => <b />
+      `
+    },
+    b: {
+      url: './jsx/b.js',
+      content: `
+        export default () => <h1>hello</h1>
+      `
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  await w.add(fsx.files.a)
+
+  await wait(DELAY)
+
+  const tree = w.tree
+
+  assert(tree[fsx.files.a])
+  assert(tree[fsx.files.b])
+
+  w.close()
+  fsx.cleanup()
+})
+
 test('handles shared deps', async () => {
   const files = {
     a: {
@@ -783,7 +815,7 @@ test(`files removed from watching aren't watched`, async () => {
   fsx.cleanup()
 })
 
-test('all', async () => {
+test('kitchen sink', async () => {
   const files = {
     a: {
       url: './all/a.js',

@@ -34,7 +34,8 @@
   "dependencies": {
     "debug": "^4.2.0",
     "es-module-lexer": "^0.4.1",
-    "filewatcher": "^3.0.1"
+    "filewatcher": "^3.0.1",
+    "strip-comments": "^2.0.1"
   },
   "devDependencies": {
     "baretest": "^2.0.0",
