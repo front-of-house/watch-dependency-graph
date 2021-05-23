@@ -76,7 +76,8 @@ test('constructs valid tree', async () => {
     a_a: {
       url: './valid/a_a.js',
       content: `
-        import a_a_a from './a_a_a'
+        const a_a_a = require('./a_a_a')
+        const a_a_b = require('./a_a_b') // multiline
         export default ''
       `
     },
@@ -84,6 +85,12 @@ test('constructs valid tree', async () => {
       url: './valid/a_a_a.js',
       content: `
         export default ''
+      `
+    },
+    a_a_b: {
+      url: './valid/a_a_b.js',
+      content: `
+        module.exports = ''
       `
     },
     a_b: {
@@ -114,6 +121,9 @@ test('constructs valid tree', async () => {
   )
   assert(
     tree[fsx.files.a_a].childrenPointers.includes(tree[fsx.files.a_a_a].pointer)
+  )
+  assert(
+    tree[fsx.files.a_a].childrenPointers.includes(tree[fsx.files.a_a_b].pointer)
   )
 
   // parents

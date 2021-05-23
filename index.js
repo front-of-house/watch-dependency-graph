@@ -92,7 +92,19 @@ async function getChildrenModuleIds ({ id, alias }) {
     children = (await parse(cleanCodeForParsing(raw)))[0].map(i => i.n)
   }
 
+  try {
+    children = children.concat(
+      Array.from(raw.matchAll(/require\(['"](.+)['"]\)/gm)).map(
+        ([_, child]) => child
+      )
+    )
+  } catch (e) {}
+
   return children
+    .reduce((_, child) => {
+      // get unique children
+      return _.includes(child) ? _ : _.concat(child)
+    }, [])
     .map(moduleId => {
       const req = createRequire(id)
       let resolved
