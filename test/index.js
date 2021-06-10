@@ -874,17 +874,21 @@ test('kitchen sink', async () => {
   fsx.cleanup()
 })
 
-test('rename file', async () => {
+test.only('rename file', async () => {
   const files = {
     a: {
       url: './rename/a.js',
+      content: `export default ''`
+    },
+    b: {
+      url: './rename/b.js',
       content: `export default ''`
     }
   }
 
   const fsx = fixtures.create(files)
   const w = graph({ cwd: fixtures.getRoot() })
-  await w.add([fsx.files.a])
+  await w.add([fsx.files.a, fsx.files.b])
 
   w.on('error', e => {
     console.log(e)
@@ -893,10 +897,10 @@ test('rename file', async () => {
   await wait(DELAY)
 
   const noChangeEvent = subscribe('change', w)
-  const newFileName = path.join(fsx.root, '/rename/b.js')
+  const newFileName = path.join(fsx.root, '/rename/c.js')
 
   // rename
-  fs.moveSync(fsx.files.a, newFileName)
+  fs.moveSync(fsx.files.b, newFileName)
 
   // change it
   fs.outputFileSync(newFileName, `export default ''`, 'utf8')
@@ -910,7 +914,9 @@ test('rename file', async () => {
   }
 
   // renamed file was removed
-  assert(w.tree[fsx.files.a] === undefined)
+  assert(w.tree[fsx.files.b] === undefined)
+  assert(w.ids[0] === fsx.files.a)
+  assert(w.ids[1] === undefined)
 
   // add renamed file
   await w.add([newFileName])

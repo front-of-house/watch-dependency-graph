@@ -317,7 +317,8 @@ module.exports = function graph ({ alias = {} } = {}) {
         // only emit if an entry is removed
         events.emit('remove', [ids[pointer]])
 
-        entryIds.splice(ids[pointer], 1)
+        entryIds.splice(entryIds.indexOf(ids[pointer]), 1)
+        ids.splice(pointer, 1)
 
         cleanById(file) // remove any references to removed file
       } else {
@@ -355,6 +356,8 @@ module.exports = function graph ({ alias = {} } = {}) {
       watcher.removeAllListeners()
     },
     async add (files) {
+      debug('add', files)
+
       files = [].concat(files).filter(entry => {
         // filter out any already watched files
         if (entryIds.includes(entry)) return false
