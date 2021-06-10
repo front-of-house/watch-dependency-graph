@@ -874,6 +874,63 @@ test('kitchen sink', async () => {
   fsx.cleanup()
 })
 
+test('rename file', async () => {
+  const files = {
+    a: {
+      url: './rename/a.js',
+      content: `export default ''`
+    }
+  }
+
+  const fsx = fixtures.create(files)
+  const w = graph({ cwd: fixtures.getRoot() })
+  await w.add([fsx.files.a])
+
+  w.on('error', e => {
+    console.log(e)
+  })
+
+  await wait(DELAY)
+
+  const noChangeEvent = subscribe('change', w)
+  const newFileName = path.join(fsx.root, '/rename/b.js')
+
+  // rename
+  fs.moveSync(fsx.files.a, newFileName)
+
+  // change it
+  fs.outputFileSync(newFileName, `export default ''`, 'utf8')
+
+  // no event
+  try {
+    await noChangeEvent
+    assert(false)
+  } catch (e) {
+    assert(e === 'timeout')
+  }
+
+  // renamed file was removed
+  assert(w.tree[fsx.files.a] === undefined)
+
+  // add renamed file
+  await w.add([newFileName])
+
+  const changeEvent = subscribe('change', w)
+
+  // change it
+  fs.outputFileSync(newFileName, `export default ''`, 'utf8')
+
+  // event emitted this time
+  const [file] = await changeEvent
+  assert(file === newFileName)
+
+  // added file is in tree now
+  assert(w.tree[newFileName])
+
+  w.close()
+  fsx.cleanup()
+})
+
 !(async function () {
   console.time('test')
   await test.run()

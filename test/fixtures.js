@@ -31,7 +31,8 @@ function create (files) {
         }
       }
     },
-    files: outputFiles
+    files: outputFiles,
+    root
   }
 }
 
