@@ -1,1 +1,9 @@
-/test/fixtures
+node_modules
+dist
+.nyc_output
+.pnpm*
+coverage
+fixtures
+
+*.swp
+*.swo
