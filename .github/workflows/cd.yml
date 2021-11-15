@@ -1,29 +1,49 @@
-name: Release
+name: CD
 
 on:
   push:
     branches:
-      - master
-      - next
+      - main
       - beta
 
+env:
+  PNPM_CACHE_FOLDER: .pnpm-store
+
 jobs:
-  release:
-    name: CD
-    runs-on: ubuntu-18.04
+  build:
+    name: CI
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v1
       - name: Setup Node.js
         uses: actions/setup-node@v1
         with:
-          node-version: 12
-      - name: Installing dependencies
-        run: npm i
-      - name: Test
-        run: npm run test
-      - name: Release
+          node-version: 14
+
+      # pnpm stuff
+      - name: pnpm — install
+        run: npm i pnpm@latest -g
+      - name: pnpm - config
+        run: pnpm config set store-dir $PNPM_CACHE_FOLDER
+      - name: pnpm - install
+        run: pnpm install
+
+      # build
+      - name: lint
+        run: pnpm lint
+      - name: build
+        run: pnpm build # bae — before everything else
+      - name: typecheck
+        run: pnpm typecheck
+      - name: test
+        run: pnpm t
+        env:
+          COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+
+      # release
+      - name: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npx semantic-release
+        run: pnpx semantic-release
