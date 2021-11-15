@@ -22,20 +22,18 @@ export type Tree = {
   }
 }
 
-type EventHandler<T = unknown> = (data: T) => void
-
 const ESM_IMPORT_REGEX = /(?<![^;\n])[ ]*import(?:["'\s]*([\w*${}\n\r\t, ]+)\s*from\s*)?\s*["'](.*?)["']/gm
 const ESM_DYNAMIC_IMPORT_REGEX = /(?<!\.)\bimport\((?:['"].+['"]|`[^$]+`)\)/gm
 
 export function createEmitter() {
-  let events: { [event: string]: EventHandler<any>[] } = {}
+  let events: { [event: string]: any[] } = {}
 
-  function emit<T>(event: string, data?: T): void {
+  function emit(event: string, data?: any): void {
     if (events[event]) events[event].forEach((handler) => handler(data))
     if (events['*']) events['*'].forEach((handler) => handler(data))
   }
 
-  function on<T = unknown>(event: string, handler: EventHandler<T>) {
+  function on(event: string, handler: any) {
     events[event] = events[event] ? events[event].concat(handler) : [handler]
     return () => {
       events[event].splice(events[event].indexOf(handler), 1)
@@ -316,8 +314,20 @@ export function create(options: Options = {}) {
     get tree() {
       return Object.assign({}, tree)
     },
-    on(event: string, handler: EventHandler) {
+    on(event: string, handler: any) {
       return emitter.on(event, handler)
+    },
+    onAdd(handler: (files: string[]) => void) {
+      return emitter.on('add', handler)
+    },
+    onRemove(handler: (files: string[]) => void) {
+      return emitter.on('remove', handler)
+    },
+    onChange(handler: (files: string[]) => void) {
+      return emitter.on('change', handler)
+    },
+    onError(handler: (error: string | Error) => void) {
+      return emitter.on('error', handler)
     },
     close() {
       emitter.clear()
