@@ -1,0 +1,6 @@
+node_modules
+dist
+static
+.pnpm-store
+pnpm-lock.yaml
+.nyc_output

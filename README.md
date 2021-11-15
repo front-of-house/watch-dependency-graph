@@ -11,14 +11,14 @@ const files = [path.resolve(__dirname, './my-file.js')]
 
 const watcher = watch({ cwd: __dirname }) // defaults to process.cwd()
 
-watcher.on('change', files => {}) // string[]
-watcher.on('remove', files => {}) // string[]
-watcher.on('error', files => {}) // string[]
+watcher.on('change', (files) => {}) // string[]
+watcher.on('remove', (files) => {}) // string[]
+watcher.on('error', (files) => {}) // string[]
 
 watcher.add(files) // string or string[], must be absolute
 watcher.remove(files) // string or string[], must be absolute
 
-const removeListener = watcher.on('change', files => {})
+const removeListener = watcher.on('change', (files) => {})
 removeListener()
 ```
 

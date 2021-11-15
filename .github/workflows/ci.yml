@@ -1,9 +1,12 @@
-name: Lint & Test
+name: CI
 
 on:
   pull_request:
     branches:
       - '**'
+
+env:
+  PNPM_CACHE_FOLDER: .pnpm-store
 
 jobs:
   build:
@@ -16,12 +19,30 @@ jobs:
         uses: actions/setup-node@v1
         with:
           node-version: 12
-      - name: Installing dependencies
-        run: npm i
-      - name: Test
-        run: npm run test
-      - name: Release
+
+      # pnpm stuff
+      - name: pnpm — install
+        run: npm i pnpm@latest -g
+      - name: pnpm - config
+        run: pnpm config set store-dir $PNPM_CACHE_FOLDER
+      - name: pnpm - install
+        run: pnpm install
+
+      # build
+      - name: lint
+        run: pnpm lint
+      - name: build
+        run: pnpm build # bae — before everything else
+      - name: typecheck
+        run: pnpm typecheck
+      - name: test
+        run: pnpm t
+        env:
+          COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
+
+      # release
+      - name: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npx semantic-release -d
+        run: pnpx semantic-release -d
