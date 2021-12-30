@@ -182,6 +182,11 @@ export function remove(filepath: string, tree: Tree) {
     tree[fp].children.splice(tree[fp].children.indexOf(filepath), 1)
   }
   for (const fp of children) {
+    if (!tree[fp]) {
+      // child may already have been taken care of
+      continue
+    }
+
     tree[fp].parents.splice(tree[fp].parents.indexOf(filepath), 1)
 
     // if no parents, remove this file entirely
